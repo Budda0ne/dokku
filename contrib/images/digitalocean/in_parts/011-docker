@@ -4,12 +4,10 @@ set -o errexit
 
 export DEBIAN_FRONTEND=noninteractive
 
-pkgs=(apt-transport-https
-  ca-certificates
+pkgs=(ca-certificates
   curl
   jq
   linux-image-extra-virtual
-  software-properties-common
 )
 
 echo '--> Updating apt repositories'
@@ -30,7 +28,7 @@ EOM
 
 echo '--> Installing docker-ce'
 apt-get -y update
-apt-get -y install docker-ce docker-compose-plugin
+apt-get -y install docker-ce docker-buildx-plugin docker-compose-plugin
 
 echo '--> Enabling docker-ce'
 systemctl enable docker

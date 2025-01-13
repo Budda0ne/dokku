@@ -1,5 +1,6 @@
 # Process Management
 
+> [!IMPORTANT]
 > New as of 0.3.14, Enhanced in 0.7.0
 
 ```
@@ -18,6 +19,7 @@ ps:stop [--parallel count] [--all|<app>]                          # Stop an app
 
 ### Inspecting app containers
 
+> [!IMPORTANT]
 > New as of 0.13.0
 
 A common administrative task to perform is calling `docker inspect` on the containers that are running for an app. This can be an error-prone task to perform, and may also reveal sensitive environment variables if not done correctly. Dokku provides a wrapper around this command via the `ps:inspect` command:
@@ -105,6 +107,83 @@ proctype: qty
 web:  1
 ```
 
+### Defining Processes
+
+#### Procfile
+
+> [!NOTE]
+> Dokku supports the Procfile format as defined in [this document](https://github.com/dokku/procfile-util/blob/master/PROCFILE_FORMAT.md) under "Strict Mode" parsing rules.
+
+Apps can define processes to run by using a `Procfile`. A `Procfile` is a simple text file that can be used to specify multiple commands, each of which is subject to process scaling. In the case where the built image sets a default command to run - either through usage of `CMD` for Dockerfile-based builds, a default process for buildpack-based builds, or any other method for the builder in use - the `Procfile` will take precedence.
+
+If the file exists, it should not be empty, as doing so may result in a failed deploy.
+
+The syntax for declaring a `Procfile` is as follows. Note that the format is one process type per line, with no duplicate process types.
+
+```Procfile
+<process type>: <command>
+```
+
+If, for example, you have multiple queue workers and wish to scale them separately, the following would be a valid way to work around the requirement of not duplicating process types:
+
+```Procfile
+worker:           env QUEUE=* bundle exec rake resque:work
+importantworker:  env QUEUE=important bundle exec rake resque:work
+```
+
+If the app build declares an `ENTRYPOINT`, the command defined in the `Procfile` is passed as an argument to that entrypoint. This is the case for all Dockerfile-based, Docker Image, and Cloud Native Buildpack deployments.
+
+The `web` process type holds some significance in that it is the only process type that is automatically scaled to `1` on the initial application deploy. See the [web process scaling documentation](/docs/processes/process-management.md#the-web-process) for more details around scaling individual processes.
+
+See the [Procfile location documentation](/docs/processes/process-management.md#changing-the-procfile-location) for more information on where to place your `Procfile` file.
+
+#### The `web` process
+
+For initial app deploys, Dokku will default to starting a single `web` process for each app. This process may be defined within the `Procfile` or as the `CMD` (for Dockerfile or Docker image deploys). Scaling of the `web` process - and all other processes - may be managed via `ps:scale` or the `formation` key in the `app.json` file either before or after the initial deploy.
+
+There are also a few other exceptions for the `web` process.
+
+- By default, the built-in nginx proxy implementation only proxies the `web` process (others may be handled via a custom `nginx.conf.sigil`).
+    - See the [nginx request proxying documentation](/docs/networking/proxies/nginx.md#request-proxying) for more information on how nginx handles proxied requests.
+- Only the `web` process may be bound to an external port.
+
+#### The `release` process
+
+The `Procfile` also supports a special `release` command which acts in a similar way to the [Heroku Release Phase](https://devcenter.heroku.com/articles/release-phase). See the [Release deployment task documentation](/docs/advanced-usage/deployment-tasks.md#procfile-release-command) for more information on how Dokku handles this process type.
+
+#### Changing the `Procfile` location
+
+The `Procfile` is expected to be found in a specific directory, depending on the deploy approach:
+
+- The `WORKDIR` of the Docker image for deploys resulting from `git:from-image` and `git:load-image` commands.
+- The root of the source code tree for all other deploys (git push, `git:from-archive`, `git:sync`).
+
+Sometimes it may be desirable to set a different path for a given app, e.g. when deploying from a monorepo. This can be done via the `procfile-path` property:
+
+```shell
+dokku ps:set node-js-app procfile-path .dokku/Procfile
+```
+
+The value is the path to the desired file *relative* to the base search directory, and will never be treated as absolute paths in any context. If that file does not exist within the repository, Dokku will continue the build process as if the repository has no `Procfile`.
+
+The default value may be set by passing an empty value for the option:
+
+```shell
+dokku ps:set node-js-app procfile-path
+```
+
+The `procfile-path` property can also be set globally. The global default is `Procfile`, and the global value is used when no app-specific value is set.
+
+```shell
+dokku ps:set --global procfile-path global-Procfile
+```
+
+The default value may be set by passing an empty value for the option.
+
+```shell
+dokku ps:set --global procfile-path
+```
+
 ### Scaling apps
 
 #### Via CLI
@@ -133,15 +212,9 @@ dokku ps:scale --skip-deploy node-js-app web=1
 
 > Using a `formation` key in an `app.json` file with _any_ `quantity` specified disables the ability to use `ps:scale` for scaling. All processes not specified in the `app.json` will have their process count set to zero.
 
-An `app.json` file can be committed to the root of the pushed app repository, and must be within the built image artifact in the image's working directory as shown below.
+Users can also configure scaling within the codebase itself to manage process scaling. The `formation` key should be specified as follows in the `app.json` file:
 
-- Buildpacks: `/app/app.json`
-- Dockerfile: `WORKDIR/app.json` or `/app.json` (if no working directory specified)
-- Docker Image: `WORKDIR/app.json` or `/app.json` (if no working directory specified)
-
-The `formation` key should be specified as follows in the `app.json` file:
-
-```Procfile
+```json
 {
   "formation": {
     "web": {
@@ -154,44 +227,9 @@ The `formation` key should be specified as follows in the `app.json` file:
 }
 ```
 
-Removing the file will result in Dokku respecting the `ps:scale` command for setting scale values. The values set via the `app.json` file from a previous deploy will be respected.
+Removing the `formation` key or removing the `app.json` file from your repository will result in Dokku respecting the `ps:scale` command for setting scale values. The values set via the `app.json` file from a previous deploy will be respected.
 
-#### The `web` process
-
-For initial app deploys, Dokku will default to starting a single `web` process for each app. This process may be defined within the `Procfile` or as the `CMD` (for Dockerfile or Docker image deploys). Scaling of the `web` process - and all other processes - may be managed via `ps:scale` or the `formation` key in the `app.json` file either before or after the initial deploy.
-
-There are also a few other exceptions for the `web` process.
-
-- Custom checks defined by a `CHECKS` file only apply to the `web` process type.
-- By default, the built-in nginx proxy implementation only proxies the `web` process (others may be handled via a custom `nginx.conf.sigil`).
-  - See the [nginx request proxying documentation](/docs/networking/proxies/nginx.md#request-proxying) for more information on how nginx handles proxied requests.
-- Only the `web` process may be bound to an external port.
-
-#### Changing the `Procfile` location
-
-When deploying a monorepo, it may be desirable to specify the specific path of the `Procfile` file to use for a given app. This can be done via the `ps:set` command. If a value is specified and that file does not exist within the repository, Dokku will continue the build process as if the repository has no `Procfile`.
-
-```shell
-dokku ps:set node-js-app procfile-path Procfile2
-```
-
-The default value may be set by passing an empty value for the option:
-
-```shell
-dokku ps:set node-js-app procfile-path
-```
-
-The `procfile-path` property can also be set globally. The global default is `Procfile`, and the global value is used when no app-specific value is set.
-
-```shell
-dokku ps:set --global procfile-path global-Procfile
-```
-
-The default value may be set by passing an empty value for the option.
-
-```shell
-dokku ps:set --global procfile-path
-```
+See the [app.json location documentation](/docs/advanced-usage/deployment-tasks.md#changing-the-appjson-location) for more information on where to place your `app.json` file.
 
 ### Stopping apps
 
@@ -247,6 +285,7 @@ dokku ps:start --all --parallel -1
 
 ### Restart policies
 
+> [!IMPORTANT]
 > New as of 0.7.0, Command Changed in 0.22.0
 
 By default, Dokku will automatically restart containers that exit with a non-zero status up to 10 times via the [on-failure Docker restart policy](https://docs.docker.com/engine/reference/run/#restart-policies---restart).
@@ -283,6 +322,7 @@ Dokku also runs `dokku-event-listener` in the background via the system's init s
 
 ### Displaying reports for an app
 
+> [!IMPORTANT]
 > New as of 0.12.0
 
 You can get a report about the deployed apps using the `ps:report` command:
@@ -353,7 +393,7 @@ When a server reboots or Docker is restarted/upgraded, Docker may or may not sta
 - Start all linked services.
 - Clear generated proxy configuration files.
 - Start the app if it has not been manually stopped.
-  - If the app containers still exist, they will be started and the generated proxy configuration files will be rebuilt.
-  - If any of the app containers are missing, the entire app will be rebuilt.
+    - If the app containers still exist, they will be started and the generated proxy configuration files will be rebuilt.
+    - If any of the app containers are missing, the entire app will be rebuilt.
 
 During this time, requests may route to the incorrect app if the assigned IPs correspond to those for other apps. While dokku makes all efforts to avoid this, there may be a few minutes where urls may route to the wrong app. To avoid this, either use a custom proxy plugin or wait a few minutes until the restoration process is complete.

@@ -1,19 +1,17 @@
 package ps
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
-	sh "github.com/codeskyblue/go-sh"
 	"github.com/dokku/dokku/plugins/common"
 	"github.com/dokku/dokku/plugins/config"
 	dockeroptions "github.com/dokku/dokku/plugins/docker-options"
-	"github.com/otiai10/copy"
 )
 
 // TriggerAppRestart restarts an app
@@ -74,8 +72,11 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 	}
 
 	processSpecificProcfile := fmt.Sprintf("%s.%s", existingProcfile, os.Getenv("DOKKU_PID"))
-	b, _ := common.PlugnTriggerOutput("git-get-property", []string{appName, "source-image"}...)
-	appSourceImage := strings.TrimSpace(string(b[:]))
+	results, _ := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "git-get-property",
+		Args:    []string{appName, "source-image"},
+	})
+	appSourceImage := results.StdoutContents()
 
 	repoDefaultProcfilePath := path.Join(sourceWorkDir, "Procfile")
 	if appSourceImage == "" {
@@ -89,12 +90,12 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 			return common.TouchFile(fmt.Sprintf("%s.missing", processSpecificProcfile))
 		}
 
-		if err := copy.Copy(repoProcfilePath, processSpecificProcfile); err != nil {
+		if err := common.Copy(repoProcfilePath, processSpecificProcfile); err != nil {
 			return fmt.Errorf("Unable to extract Procfile: %v", err.Error())
 		}
 
 		if procfilePath != "Procfile" {
-			if err := copy.Copy(repoProcfilePath, repoDefaultProcfilePath); err != nil {
+			if err := common.Copy(repoProcfilePath, repoDefaultProcfilePath); err != nil {
 				return fmt.Errorf("Unable to move Procfile into place: %v", err.Error())
 			}
 		}
@@ -104,8 +105,15 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 		}
 	}
 
-	if b, err := sh.Command("procfile-util", "check", "-P", processSpecificProcfile).CombinedOutput(); err != nil {
-		return fmt.Errorf(strings.TrimSpace(string(b[:])))
+	result, err := common.CallExecCommand(common.ExecCommandInput{
+		Command: "procfile-util",
+		Args:    []string{"check", "-P", processSpecificProcfile},
+	})
+	if err != nil {
+		return fmt.Errorf(result.StderrContents())
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("Invalid Procfile: %s", result.StderrContents())
 	}
 	return nil
 }
@@ -249,14 +257,23 @@ func TriggerPostStop(appName string) error {
 	})
 }
 
-// TriggerPreDeploy ensures an app has an up to date scale parameters
-func TriggerPreDeploy(appName string, imageTag string) error {
+// TriggerPostReleaseBuilder ensures an app has an up to date scale parameters
+func TriggerPostReleaseBuilder(builderType string, appName string, image string) error {
 	if err := updateScale(appName, false, FormationSlice{}); err != nil {
 		common.LogDebug(fmt.Sprintf("Error generating scale file: %s", err.Error()))
 		return err
 	}
 
 	return nil
+}
+
+// TriggerProcfileExists checks if a procfile exists
+func TriggerProcfileExists(appName string) error {
+	if hasProcfile(appName) {
+		return nil
+	}
+
+	return errors.New("Procfile does not exist")
 }
 
 // TriggerProcfileGetCommand fetches a command from the procfile
@@ -289,7 +306,6 @@ func TriggerPsCurrentScale(appName string) error {
 		return err
 	}
 
-	sort.Sort(formations)
 	lines := []string{}
 	for _, formation := range formations {
 		lines = append(lines, fmt.Sprintf("%s=%d", formation.ProcessType, formation.Quantity))

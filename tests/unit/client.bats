@@ -4,11 +4,13 @@ load test_helper
 
 setup() {
   global_setup
-  export DOKKU_HOST=dokku.me
+  export "DOKKU_HOST=${DOKKU_DOMAIN}"
   create_app
+  clone_test_plugin
 }
 
 teardown() {
+  remove_test_plugin || true
   destroy_app
   unset DOKKU_HOST
   global_teardown
@@ -134,29 +136,29 @@ teardown() {
 }
 
 @test "(client) domains:add" {
-  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP www.test.app.dokku.me"
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP www.test.app.${DOKKU_DOMAIN}"
   echo "output: $output"
   echo "status: $status"
   assert_success
-  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP test.app.dokku.me"
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP test.app.${DOKKU_DOMAIN}"
   echo "output: $output"
   echo "status: $status"
   assert_success
 }
 
 @test "(client) domains:remove" {
-  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP test.app.dokku.me"
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP test.app.${DOKKU_DOMAIN}"
   echo "output: $output"
   echo "status: $status"
   assert_success
-  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:remove $TEST_APP test.app.dokku.me"
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:remove $TEST_APP test.app.${DOKKU_DOMAIN}"
   echo "output: $output"
   echo "status: $status"
-  refute_line "test.app.dokku.me"
+  refute_line "test.app.${DOKKU_DOMAIN}"
 }
 
 @test "(client) domains:clear" {
-  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP test.app.dokku.me"
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh domains:add $TEST_APP test.app.${DOKKU_DOMAIN}"
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -171,7 +173,10 @@ teardown() {
 #   # looks like docker exec is built to work with docker-under-libcontainer,
 #   # but we're using docker-under-lxc. I don't have an estimated time for the fix, sorry
 #   skip "circleci does not support docker exec at the moment."
-#   deploy_app
+#   run deploy_app
+#   echo "output: $output"
+#   echo "status: $status"
+#   assert_success
 #   run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh ps $TEST_APP | grep -q 'node web.js'"
 #   echo "output: $output"
 #   echo "status: $status"
@@ -179,7 +184,10 @@ teardown() {
 # }
 
 @test "(client) ps:start" {
-  deploy_app
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh ps:stop $TEST_APP"
   echo "output: $output"
   echo "status: $status"
@@ -197,7 +205,10 @@ teardown() {
 }
 
 @test "(client) ps:stop" {
-  deploy_app
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh ps:stop $TEST_APP"
   echo "output: $output"
   echo "status: $status"
@@ -211,7 +222,10 @@ teardown() {
 }
 
 @test "(client) ps:restart" {
-  deploy_app
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh ps:restart $TEST_APP"
   echo "output: $output"
   echo "status: $status"
@@ -261,7 +275,7 @@ teardown() {
   assert_success
   assert_output "dokku"
 
-  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh remote:add dokku2 dokku@dokku.me:dokku2"
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh remote:add dokku2 dokku@${DOKKU_DOMAIN}:dokku2"
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -298,4 +312,23 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output "dokku"
+}
+
+@test "(client) test-args" {
+  run /bin/bash -c "dokku plugin:install $TEST_PLUGIN_GIT_REPO --name $TEST_PLUGIN_NAME"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku smoke-test-plugin:args bash -c 'echo Hello'"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output "triggered smoke-test-plugin:args with args: smoke-test-plugin:args, bash, -c, echo Hello"
+
+  run /bin/bash -c "${BATS_TEST_DIRNAME}/../../contrib/dokku_client.sh 'smoke-test-plugin:args bash -c \"echo Hello\"'"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "triggered smoke-test-plugin:args with args: smoke-test-plugin:args, bash, -c, echo Hello"
 }

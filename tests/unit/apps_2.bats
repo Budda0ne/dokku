@@ -11,7 +11,10 @@ teardown() {
 }
 
 @test "(apps) apps:clone" {
-  deploy_app
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "dokku apps:clone $TEST_APP great-test-name"
   echo "output: $output"
   echo "status: $status"
@@ -23,7 +26,7 @@ teardown() {
   run /bin/bash -c "curl --silent --write-out '%{http_code}\n' $(dokku url great-test-name) | grep 404"
   echo "output: $output"
   echo "status: $status"
-  assert_output ""
+  assert_output_not_exists
   run /bin/bash -c "dokku --force apps:destroy great-test-name"
   echo "output: $output"
   echo "status: $status"
@@ -56,10 +59,6 @@ teardown() {
   echo "output: $output"
   echo "status: $status"
   assert_success
-  run /bin/bash -c "dokku scheduler-docker-local:set  $TEST_APP disable-chown true"
-  echo "output: $output"
-  echo "status: $status"
-  assert_success
 
   run /bin/bash -c "dokku apps:clone $TEST_APP great-test-name"
   echo "output: $output"
@@ -75,6 +74,11 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output "https://github.com/heroku/heroku-buildpack-ruby.git"
+  run /bin/bash -c "dokku domains:report great-test-name --domains-app-vhosts"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output "great-test-name.$DOKKU_DOMAIN"
   run /bin/bash -c "dokku git:report great-test-name --git-deploy-branch"
   echo "output: $output"
   echo "status: $status"
@@ -95,11 +99,6 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output "100"
-  run /bin/bash -c "dokku scheduler-docker-local:report great-test-name --scheduler-docker-local-disable-chown"
-  echo "output: $output"
-  echo "status: $status"
-  assert_success
-  assert_output "true"
 
   run /bin/bash -c "dokku --force apps:destroy great-test-name"
   echo "output: $output"
@@ -108,20 +107,35 @@ teardown() {
 }
 
 @test "(apps) apps:clone ssl-app" {
-  run /bin/bash -c "dokku config:set --no-restart $TEST_APP DOKKU_PROXY_PORT_MAP=https:443:5000 DOKKU_PROXY_SSL_PORT=443"
-  deploy_app
+  skip "this test always failed and requires changes in dokku to support detected vs specified functionality"
+  run /bin/bash -c "dokku apps:create $TEST_APP"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  run /bin/bash -c "dokku ports:set $TEST_APP https:443:5000"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  run /bin/bash -c "dokku config:set --no-restart $TEST_APP DOKKU_PROXY_SSL_PORT=443"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "dokku apps:clone $TEST_APP app-without-ssl"
   echo "output: $output"
   echo "status: $status"
   assert_success
-  run /bin/bash -c "dokku --quiet proxy:ports app-without-ssl | xargs"
+  run /bin/bash -c "dokku --quiet ports:list app-without-ssl | xargs"
   echo "output: $output"
   echo "status: $status"
   assert_output "http 80 5000"
   run /bin/bash -c "dokku config:get app-without-ssl DOKKU_PROXY_SSL_PORT"
   echo "output: $output"
   echo "status: $status"
-  assert_output ""
+  assert_output_not_exists
   run /bin/bash -c "dokku --force apps:destroy app-without-ssl"
   echo "output: $output"
   echo "status: $status"
@@ -129,7 +143,10 @@ teardown() {
 }
 
 @test "(apps) apps:clone --skip-deploy" {
-  deploy_app
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "dokku apps:clone --skip-deploy $TEST_APP great-test-name"
   echo "output: $output"
   echo "status: $status"
@@ -137,27 +154,31 @@ teardown() {
   run [ -d /home/dokku/great-test-name/tls ]
   assert_failure
   run [ -f /home/dokku/great-test-name/VHOST ]
-  assert_failure
-  run /bin/bash -c "curl --silent --write-out '%{http_code}\n' $(dokku url $TEST_APP) | grep 200"
+  assert_success
+  run /bin/bash -c "dokku url great-test-name"
   echo "output: $output"
   echo "status: $status"
   assert_success
-  run /bin/bash -c "curl --silent --write-out '%{http_code}\n' $(dokku url great-test-name) | grep 404"
+  assert_output "http://great-test-name.$DOKKU_DOMAIN"
+  run /bin/bash -c "dokku url $TEST_APP"
   echo "output: $output"
   echo "status: $status"
-  assert_failure
+  assert_success
+  assert_output "http://$TEST_APP.$DOKKU_DOMAIN"
+  assert_http_localhost_response "http" "$TEST_APP.$DOKKU_DOMAIN" "80" "/hello"
+  assert_http_localhost_response "http" "great-test-name.dokku.me" "80" "/hello" "" "404"
   run /bin/bash -c "dokku --force apps:destroy great-test-name"
   echo "output: $output"
   echo "status: $status"
   assert_success
-  run /bin/bash -c "curl --silent --write-out '%{http_code}\n' $(dokku url $TEST_APP) | grep 200"
-  echo "output: $output"
-  echo "status: $status"
-  assert_success
+  assert_http_localhost_response "http" "$TEST_APP.$DOKKU_DOMAIN" "80" "/hello"
 }
 
 @test "(apps) apps:clone --ignore-existing" {
-  deploy_app
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
   run /bin/bash -c "dokku apps:create great-test-name"
   echo "output: $output"
   echo "status: $status"

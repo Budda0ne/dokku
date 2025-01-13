@@ -8,12 +8,11 @@ import (
 	"strings"
 
 	"github.com/dokku/dokku/plugins/common"
-	"github.com/otiai10/copy"
 )
 
 // TriggerAppJSONProcessDeployParallelism returns the max number of processes to deploy in parallel
 func TriggerAppJSONProcessDeployParallelism(appName string, processType string) error {
-	appJSON, err := getAppJSON(appName)
+	appJSON, err := GetAppJSON(appName)
 	if err != nil {
 		return err
 	}
@@ -34,6 +33,28 @@ func TriggerAppJSONProcessDeployParallelism(appName string, processType string) 
 	}
 
 	fmt.Println(parallelism)
+	return nil
+}
+
+// TriggerAppJSONGetContent outputs the contents of the app-json file, if any
+func TriggerAppJSONGetContent(appName string) error {
+	if !hasAppJSON(appName) {
+		fmt.Print("{}")
+		return nil
+	}
+
+	b, err := os.ReadFile(getProcessSpecificAppJSONPath(appName))
+	if err != nil {
+		return fmt.Errorf("Cannot read app.json file: %v", err)
+	}
+
+	content := strings.TrimSpace(string(b))
+	if content == "" {
+		fmt.Print("{}")
+		return nil
+	}
+
+	fmt.Print(content)
 	return nil
 }
 
@@ -80,11 +101,17 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 	}
 
 	processSpecificAppJSON := fmt.Sprintf("%s.%s", existingAppJSON, os.Getenv("DOKKU_PID"))
-	b, _ := common.PlugnTriggerOutput("git-get-property", []string{appName, "source-image"}...)
-	appSourceImage := strings.TrimSpace(string(b[:]))
+	results, _ := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "git-get-property",
+		Args:    []string{appName, "source-image"},
+	})
+	appSourceImage := results.StdoutContents()
 
-	b, _ = common.PlugnTriggerOutput("builder-get-property", []string{appName, "build-dir"}...)
-	buildDir := strings.TrimSpace(string(b[:]))
+	results, _ = common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "builder-get-property",
+		Args:    []string{appName, "build-dir"},
+	})
+	buildDir := results.StdoutContents()
 
 	repoDefaultAppJSONPath := path.Join(sourceWorkDir, "app.json")
 	if appSourceImage == "" {
@@ -98,12 +125,12 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 			return common.TouchFile(fmt.Sprintf("%s.missing", processSpecificAppJSON))
 		}
 
-		if err := copy.Copy(repoAppJSONPath, processSpecificAppJSON); err != nil {
+		if err := common.Copy(repoAppJSONPath, processSpecificAppJSON); err != nil {
 			return fmt.Errorf("Unable to extract app.json: %v", err.Error())
 		}
 
 		if appJSONPath != "app.json" {
-			if err := copy.Copy(repoAppJSONPath, repoDefaultAppJSONPath); err != nil {
+			if err := common.Copy(repoAppJSONPath, repoDefaultAppJSONPath); err != nil {
 				return fmt.Errorf("Unable to move app.json into place: %v", err.Error())
 			}
 		}
@@ -158,7 +185,7 @@ func TriggerPostAppRenameSetup(oldAppName string, newAppName string) error {
 	return common.CloneAppData("app-json", oldAppName, newAppName)
 }
 
-// TriggerPostCreate ensures apps the correct data directory structure
+// TriggerPostCreate ensures apps have the correct data directory structure
 func TriggerPostCreate(appName string) error {
 	return common.CreateAppDataDirectory("app-json", appName)
 }
@@ -185,18 +212,21 @@ func TriggerPostDeploy(appName string, imageTag string) error {
 	return executeScript(appName, image, imageTag, "postdeploy")
 }
 
-// TriggerPreDeploy is a trigger to execute predeploy and release deployment tasks
-func TriggerPreDeploy(appName string, imageTag string) error {
-	image := common.GetAppImageName(appName, imageTag, "")
-	if err := executeScript(appName, image, imageTag, "predeploy"); err != nil {
-		return err
-	}
+func TriggerPreReleaseBuilder(builderType string, appName string, image string) error {
+	parts := strings.Split(image, ":")
+	imageTag := parts[len(parts)-1]
+	return executeScript(appName, image, imageTag, "predeploy")
+}
 
+// TriggerPostReleaseBuilder is a trigger to execute predeploy and release deployment tasks
+func TriggerPostReleaseBuilder(builderType string, appName string, image string) error {
+	parts := strings.Split(image, ":")
+	imageTag := parts[len(parts)-1]
 	if err := executeScript(appName, image, imageTag, "release"); err != nil {
 		return err
 	}
 
-	if err := setScale(appName, image); err != nil {
+	if err := setScale(appName); err != nil {
 		return err
 	}
 

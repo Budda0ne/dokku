@@ -1,5 +1,6 @@
 # Docker Local Scheduler
 
+> [!IMPORTANT]
 > Subcommands new as of 0.12.12
 
 ```
@@ -7,35 +8,29 @@ scheduler-docker-local:report [<app>] [<flag>]              # Displays a schedul
 scheduler-docker-local:set <app> <key> (<value>)            # Set or clear a scheduler-docker-local property for an app
 ```
 
+> [!IMPORTANT]
 > New as of 0.12.0
 
 Dokku natively includes functionality to manage application lifecycles for a single server using the `scheduler-docker-local` plugin. It is the default scheduler, but as with all schedulers, it is set on a per-application basis. The scheduler can currently be overridden by running the following command:
 
 ```shell
-dokku config:set node-js-app DOCKER_SCHEDULER=docker-local
+dokku scheduler:set node-js-app selected docker-local
 ```
 
-As it is the default, unsetting the `DOCKER_SCHEDULER` config variable is also a valid way to reset the scheduler.
+As it is the default, unsetting the `selected` scheduler property is also a valid way to reset the scheduler.
 
 ```shell
-dokku config:unset node-js-app DOCKER_SCHEDULER
+dokku scheduler:set node-js-app selected
 ```
 
 ## Usage
 
-### Disabling chown of persistent storage
+### Deploying amd64 images on arm64
 
-The `scheduler-docker-local` plugin will ensure your storage mounts are owned by either `herokuishuser` or the overridden value you have set in `DOKKU_APP_USER`. You may disable this by running the following `scheduler-docker-local:set` command for your application:
+> [!IMPORTANT]
+> New as of 0.33.0
 
-```shell
-dokku scheduler-docker-local:set node-js-app disable-chown true
-```
-
-Once set, you may re-enable it by setting a blank value for `disable-chown`:
-
-```shell
-dokku scheduler-docker-local:set node-js-app disable-chown
-```
+Many builders only produce amd64-compatible images. The docker-local scheduler will automatically detect these and run them via the `--platform=linux/amd64` on arm64 deploy targets.
 
 ### Disabling the init process
 
@@ -55,6 +50,7 @@ All image containers with the label `org.opencontainers.image.vendor=linuxserver
 
 ### Deploying Process Types in Parallel
 
+> [!IMPORTANT]
 > New as of 0.25.5
 
 By default, Dokku deploys an app's processes one-by-one in order, with the `web` process being deployed first. Deployment parallelism may be achieved by setting the `parallel-schedule-count` property, which defaults to `1`. Increasing this number increases the number of process types that may be deployed in parallel (with the web process being the exception).
@@ -78,19 +74,14 @@ Note that increasing the value of `parallel-schedule-count` may significantly im
 
 #### Increasing parallelism within a process deploy
 
+> [!IMPORTANT]
 > New as of 0.26.0
 
 By default, Dokku will deploy one instance of a given process type at a time. This can be increased by customizing the `app.json` `formation` key to include a `max_parallel` key for the given process type.
 
-An `app.json` file can be committed to the root of the pushed app repository, and must be within the built image artifact in the image's working directory as shown below.
-
-- Buildpacks: `/app/app.json`
-- Dockerfile: `WORKDIR/app.json` or `/app.json` (if no working directory specified)
-- Docker Image: `WORKDIR/app.json` or `/app.json` (if no working directory specified)
-
 The `formation` key should be specified as follows in the `app.json` file:
 
-```Procfile
+```json
 {
   "formation": {
     "web": {
@@ -103,9 +94,11 @@ The `formation` key should be specified as follows in the `app.json` file:
 }
 ```
 
-Omitting or removing the entry will result in parallelism for that process type to return to 1 entry at a time. This can be combined with the  `parallel-schedule-count` property to speed up deployments.
+Omitting or removing the entry will result in parallelism for that process type to return to 1 entry at a time. This can be combined with the `parallel-schedule-count` property to speed up deployments.
 
 Note that increasing the value of `max_parallel` may significantly impact CPU utilization on your host as your app containers - and their respective processes - start up. Setting a value higher than the number of available CPUs is discouraged. It is recommended that users carefully set this value so as not to overburden their server.
+
+See the [app.json location documentation](/docs/advanced-usage/deployment-tasks.md#changing-the-appjson-location) for more information on where to place your `app.json` file.
 
 ## Scheduler Interface
 
@@ -125,7 +118,6 @@ This plugin implements various functionality through `plugn` triggers to integra
 - `ps:stop`
 - `run`
 
-
 ### Logging support
 
 App logs for the `logs` command are fetched from running containers via the `docker` cli. To persist logs across deployments, consider using Dokku's [vector integration](/docs/deployment/logs.md#vector-logging-shipping) to ship logs to another service or a third-party platform.
@@ -137,15 +129,15 @@ The `docker-local` scheduler supports a minimal list of resource _limits_ and _r
 #### Resource Limits
 
 - cpu: (docker option: `--cpus`), is specified in number of CPUs a process can access.
-  - See the ["CPU" section](https://docs.docker.com/config/containers/resource_constraints/#cpu) of the Docker Runtime Options documentation for more information.
+    - See the ["CPU" section](https://docs.docker.com/config/containers/resource_constraints/#cpu) of the Docker Runtime Options documentation for more information.
 - memory: (docker option: `--memory`) should be specified with a suffix of `b` (bytes), `k` (kilobytes), `m` (megabytes), `g` (gigabytes). Default unit is `m` (megabytes).
-  - See the ["Memory" section](https://docs.docker.com/config/containers/resource_constraints/#memory) of the Docker Runtime Options documentation for more information.
+    - See the ["Memory" section](https://docs.docker.com/config/containers/resource_constraints/#memory) of the Docker Runtime Options documentation for more information.
 - memory-swap: (docker option: `--memory-swap`) should be specified with a suffix of `b` (bytes), `k` (kilobytes), `m` (megabytes), `g` (gigabytes)
-  - See the ["Memory" section](https://docs.docker.com/config/containers/resource_constraints/#memory) of the Docker Runtime Options documentation for more information.
+    - See the ["Memory" section](https://docs.docker.com/config/containers/resource_constraints/#memory) of the Docker Runtime Options documentation for more information.
 - nvidia-gpus: (docker option: `--gpus`), is specified in number of Nvidia GPUs a process can access.
-  - See the ["GPU" section](https://docs.docker.com/config/containers/resource_constraints/#gpu) of the Docker Runtime Options documentation for more information.
+    - See the ["GPU" section](https://docs.docker.com/config/containers/resource_constraints/#gpu) of the Docker Runtime Options documentation for more information.
 
 #### Resource Reservations
 
 - memory: (docker option: `--memory-reservation`) should be specified with a suffix of `b` (bytes), `k` (kilobytes), `m` (megabytes), `g` (gigabytes). Default unit is `m` (megabytes).
-  - See the ["Memory" section](https://docs.docker.com/config/containers/resource_constraints/#memory) of the Docker Runtime Options documentation for more information.
+    - See the ["Memory" section](https://docs.docker.com/config/containers/resource_constraints/#memory) of the Docker Runtime Options documentation for more information.

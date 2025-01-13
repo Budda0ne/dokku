@@ -10,8 +10,15 @@ import (
 
 // TriggerDeployedAppImageRepo outputs the associated image repo to stdout
 func TriggerDeployedAppImageRepo(appName string) error {
-	imageRepo := common.PropertyGet("registry", appName, "image-repo")
-	imageRepo = strings.TrimSpace(imageRepo)
+	imageRepo := strings.TrimSpace(reportImageRepo(appName))
+	if imageRepo == "" {
+		var err error
+		imageRepo, err = getImageRepoFromTemplate(appName)
+		if err != nil {
+			return fmt.Errorf("Unable to determine image repo from template: %w", err)
+		}
+	}
+
 	if imageRepo == "" {
 		imageRepo = common.GetAppImageRepo(appName)
 	}
@@ -83,8 +90,16 @@ func TriggerPostDelete(appName string) error {
 func TriggerPostReleaseBuilder(appName string, image string) error {
 	parts := strings.Split(image, ":")
 	imageTag := parts[len(parts)-1]
-	if err := common.PlugnTrigger("pre-deploy", []string{appName, imageTag}...); err != nil {
-		return err
+	if common.PlugnTriggerExists("pre-deploy") {
+		common.LogWarn("Deprecated: please upgrade plugin to use 'pre-release-builder' plugin trigger instead of pre-deploy")
+		_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+			Trigger:     "pre-deploy",
+			Args:        []string{appName, imageTag},
+			StreamStdio: true,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	imageID, _ := common.DockerInspect(image, "{{ .Id }}")

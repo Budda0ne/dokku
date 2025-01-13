@@ -3,13 +3,11 @@ package builder
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/dokku/dokku/plugins/common"
-	"github.com/otiai10/copy"
 )
 
 // TriggerBuilderDetect outputs a manually selected builder for the app
@@ -71,7 +69,7 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 		return fmt.Errorf("Specified build-dir not found in sourcecode working directory: %v", buildDir)
 	}
 
-	tmpWorkDir, err := ioutil.TempDir(os.TempDir(), fmt.Sprintf("dokku-%s-%s", common.MustGetEnv("DOKKU_PID"), "CorePostExtract"))
+	tmpWorkDir, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("dokku-%s-%s", common.MustGetEnv("DOKKU_PID"), "CorePostExtract"))
 	if err != nil {
 		return fmt.Errorf("Unable to create temporary working directory: %v", err.Error())
 	}
@@ -80,7 +78,7 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 		return fmt.Errorf("Unable to clear out temporary working directory for rewrite: %v", err.Error())
 	}
 
-	if err := copy.Copy(newSourceWorkDir, tmpWorkDir); err != nil {
+	if err := common.Copy(newSourceWorkDir, tmpWorkDir); err != nil {
 		return fmt.Errorf("Unable to move build-dir to temporary working directory: %v", err.Error())
 	}
 
@@ -88,7 +86,7 @@ func TriggerCorePostExtract(appName string, sourceWorkDir string) error {
 		return fmt.Errorf("Unable to clear out sourcecode working directory for rewrite: %v", err.Error())
 	}
 
-	if err := copy.Copy(tmpWorkDir, sourceWorkDir); err != nil {
+	if err := common.Copy(tmpWorkDir, sourceWorkDir); err != nil {
 		return fmt.Errorf("Unable to move build-dir to sourcecode working directory: %v", err.Error())
 	}
 
@@ -101,7 +99,11 @@ func TriggerInstall() error {
 		return fmt.Errorf("Unable to install the builder plugin: %s", err.Error())
 	}
 
-	return nil
+	_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "install-builder-prune",
+	})
+
+	return err
 }
 
 // TriggerPostAppCloneSetup creates new builder files
@@ -129,5 +131,39 @@ func TriggerPostAppRenameSetup(oldAppName string, newAppName string) error {
 
 // TriggerPostDelete destroys the builder property for a given app container
 func TriggerPostDelete(appName string) error {
-	return common.PropertyDestroy("builder", appName)
+	if err := common.PropertyDestroy("builder", appName); err != nil {
+		return err
+	}
+
+	imagesByAppLabel, err := common.DockerFilterImages([]string{
+		fmt.Sprintf("label=com.dokku.app-name=%s", appName),
+	})
+	if err != nil {
+		common.LogWarn(err.Error())
+	}
+
+	imageRepo := common.GetAppImageRepo(appName)
+	imagesByRepo, err := listImagesByImageRepo(imageRepo)
+	if err != nil {
+		common.LogWarn(err.Error())
+	}
+
+	images := append(imagesByAppLabel, imagesByRepo...)
+	common.RemoveImages(images)
+
+	return nil
+}
+
+// TriggerPostReleaseBuilder deletes unused build images
+func TriggerPostReleaseBuilder(builderType string, appName string) error {
+	images, _ := common.DockerFilterImages([]string{
+		"label=com.dokku.image-stage=build",
+		fmt.Sprintf("label=com.dokku.app-name=%s", appName),
+	})
+
+	if err := common.RemoveImages(images); err != nil {
+		common.LogWarn(err.Error())
+	}
+
+	return nil
 }

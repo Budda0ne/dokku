@@ -3,20 +3,18 @@ package logs
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/dokku/dokku/plugins/common"
 	dockeroptions "github.com/dokku/dokku/plugins/docker-options"
-
-	sh "github.com/codeskyblue/go-sh"
 )
 
 // TriggerDockerArgsProcessDeploy outputs the logs plugin docker options for an app
 func TriggerDockerArgsProcessDeploy(appName string) error {
-	stdin, err := ioutil.ReadAll(os.Stdin)
+	stdin, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return err
 	}
@@ -47,9 +45,12 @@ func TriggerDockerArgsProcessDeploy(appName string) error {
 	}
 
 	if !hasDriverOpt {
-		b, _ := sh.Command(common.DockerBin(), "system", "info", "--format", "{{ .LoggingDriver }}").Output()
-		output := strings.TrimSpace(string(b[:]))
-		if !allowedDrivers[output] {
+		result, _ := common.CallExecCommand(common.ExecCommandInput{
+			Command: common.DockerBin(),
+			Args:    []string{"system", "info", "--format", "{{ .LoggingDriver }}"},
+		})
+
+		if !allowedDrivers[result.StdoutContents()] {
 			ignoreMaxSize = true
 		}
 	}
@@ -84,11 +85,10 @@ func TriggerInstall() error {
 		return err
 	}
 
-	if err := common.SetPermissions(logDirectory, 0755); err != nil {
-		return err
-	}
-
-	return nil
+	return common.SetPermissions(common.SetPermissionInput{
+		Filename: logDirectory,
+		Mode:     os.FileMode(0755),
+	})
 }
 
 // TriggerLogsGetProperty writes the logs key to stdout for a given app container
@@ -134,7 +134,7 @@ func TriggerPostAppRenameSetup(oldAppName string, newAppName string) error {
 	return common.CloneAppData("logs", oldAppName, newAppName)
 }
 
-// TriggerPostCreate ensures apps the correct data directory structure
+// TriggerPostCreate ensures apps have the correct data directory structure
 func TriggerPostCreate(appName string) error {
 	return common.CreateAppDataDirectory("logs", appName)
 }

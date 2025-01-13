@@ -1,5 +1,6 @@
 # Traefik Proxy
 
+> [!IMPORTANT]
 > New as of 0.28.0
 
 Dokku provides integration with the [Traefik](https://traefik.io/) proxy service by utilizing the Docker label-based integration implemented by Traefik.
@@ -19,7 +20,8 @@ Using the `traefik` plugin integration requires the `docker-compose-plugin` for 
 
 ## Usage
 
-> Warning: As using multiple proxy plugins on a single Dokku installation can lead to issues routing requests to apps, doing so should be avoided. As the default proxy implementation is nginx, users are encouraged to stop the nginx service before switching to Traefik.
+> [!WARNING]
+> As using multiple proxy plugins on a single Dokku installation can lead to issues routing requests to apps, doing so should be avoided. As the default proxy implementation is nginx, users are encouraged to stop the nginx service before switching to Traefik.
 
 The Traefik plugin has specific rules for routing requests:
 
@@ -65,6 +67,17 @@ dokku traefik:stop
 
 The Traefik container will be stopped and removed from the system. If the container is not running, this command will do nothing.
 
+### Changing the Traefik entrypoint names
+
+When you use a self-hosted Traefik instance, your entrypoint names might be different from the default `http` and `https`
+
+Use `traefik:set` to set both `http-entry-point` and `https-entry-point` to custom values
+
+```shell
+dokku traefik:set --global http-entry-point web
+dokku traefik:set --global https-entry-point websecure
+```
+
 ### Showing the Traefik compose config
 
 For debugging purposes, it may be useful to show the Traefik compose config. This can be achieved via the `traefik:show-config` command.
@@ -102,7 +115,7 @@ You can use these modifiers as follows:
 dokku traefik:logs --tail --num 10
 ```
 
-The above command will show logs continually from the vector container, with an initial history of 10 log lines
+The above command will show logs continually from the traefik container, with an initial history of 10 log lines
 
 ### Changing the Traefik log level
 
@@ -113,16 +126,6 @@ dokku traefik:set --global log-level DEBUG
 ```
 
 After modifying, the Traefik container will need to be restarted.
-
-### Setting rule priority
-
-By default, app deployments will result in the newer traefik rules using a higher priority in order to have any newer rules respected by Traefik. Rule priorities will always increase according to the current unix timestamp. The priority may be fixed by setting the app-level `priority` property:
-
-```shell
-dokku traefik:set node-js-app priority 12345
-```
-
-After modifying, the app container will need to be recreated via a `ps:rebuild` or an app deployment.
 
 ### SSL Configuration
 
@@ -154,24 +157,26 @@ Traefik exposes an API and Dashboard, which Dokku disables by default for securi
 
 #### Enabling the api
 
-> Warning: Users enabling the dashboard should also enable api basic auth.
+> [!WARNING]
+> Users enabling the dashboard should also enable api basic auth.
 
-By default, the api is disabled. To enable, set the `api` property with the `--global` flag:
+By default, the api is disabled. To enable, set the `api-enabled` property with the `--global` flag:
 
 ```shell
-dokku traefik:set --global api true
+dokku traefik:set --global api-enabled true
 ```
 
 After enabling, the Traefik container will need to be restarted.
 
 #### Enabling the dashboard
 
-> Warning: Users enabling the dashboard should also enable api basic auth.
+> [!WARNING]
+> Users enabling the dashboard should also enable api basic auth.
 
-By default, the dashboard is disabled. To enable, set the `dashboard` property with the `--global` flag:
+By default, the dashboard is disabled. To enable, set the `dashboard-enabled` property with the `--global` flag:
 
 ```shell
-dokku traefik:set --global dashboard true
+dokku traefik:set --global dashboard-enabled true
 ```
 
 After enabling, the Traefik container will need to be restarted.

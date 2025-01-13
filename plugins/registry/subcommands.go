@@ -3,7 +3,8 @@ package registry
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
+	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 // CommandLogin logs a user into the specified server
 func CommandLogin(server string, username string, password string, passwordStdin bool) error {
 	if passwordStdin {
-		stdin, err := ioutil.ReadAll(os.Stdin)
+		stdin, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return err
 		}
@@ -31,22 +32,36 @@ func CommandLogin(server string, username string, password string, passwordStdin
 		return errors.New("Missing password argument")
 	}
 
-	command := []string{
-		common.DockerBin(),
-		"login",
-		"--username",
-		username,
-		"--password-stdin",
-		server,
+	if server == "hub.docker.com" || server == "docker.com" {
+		server = "docker.io"
 	}
 
 	buffer := bytes.Buffer{}
 	buffer.Write([]byte(password + "\n"))
 
-	loginCmd := common.NewShellCmd(strings.Join(command, " "))
-	loginCmd.Command.Stdin = &buffer
-	if !loginCmd.Execute() {
-		return errors.New("Failed to log into registry")
+	result, err := common.CallExecCommand(common.ExecCommandInput{
+		Command:     common.DockerBin(),
+		Args:        []string{"login", "--username", username, "--password-stdin", server},
+		Stdin:       &buffer,
+		StreamStdio: true,
+	})
+	if err != nil {
+		return fmt.Errorf("Unable to run docker login: %w", err)
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("Unable to run docker login: %s", result.StderrContents())
+	}
+
+	_, err = common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "post-registry-login",
+		Args:        []string{server, username},
+		StreamStdio: true,
+		Env: map[string]string{
+			"DOCKER_REGISTRY_PASS": password,
+		},
+	})
+	if err != nil {
+		return err
 	}
 
 	return nil

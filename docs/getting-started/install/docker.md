@@ -3,13 +3,13 @@
 Pull the dokku/dokku image:
 
 ```shell
-docker pull dokku/dokku:0.30.7
+docker pull dokku/dokku:0.35.15
 ```
 
 Next, run the image.
 
 ```shell
-docker container run \
+docker container run -d \
   --env DOKKU_HOSTNAME=dokku.me \
   --env DOKKU_HOST_ROOT=/var/lib/dokku/home/dokku \
   --env DOKKU_LIB_HOST_ROOT=/var/lib/dokku/var/lib/dokku \
@@ -19,7 +19,29 @@ docker container run \
   --publish 8443:443 \
   --volume /var/lib/dokku:/mnt/dokku \
   --volume /var/run/docker.sock:/var/run/docker.sock \
-  dokku/dokku:0.30.7
+  dokku/dokku:0.35.15
+```
+
+Alternatively, you can use `docker-compose.yml`:
+
+```yaml
+services:
+  dokku:
+    image: dokku/dokku:0.35.15
+    container_name: dokku
+    network_mode: bridge
+    ports:
+      - "3022:22"
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - "/var/lib/dokku:/mnt/dokku"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    environment:
+      DOKKU_HOSTNAME: dokku.me
+      DOKKU_HOST_ROOT: /var/lib/dokku/home/dokku
+      DOKKU_LIB_HOST_ROOT: /var/lib/dokku/var/lib/dokku
+    restart: unless-stopped
 ```
 
 The above command will start a new docker container that is ready when a message similar to `Runit started as PID 12345` appears.
@@ -61,17 +83,23 @@ redis: https://github.com/dokku/dokku-redis.git
 The alternative is to build a custom docker image via a custom Dockerfile. This Dockerfile can run any `plugin:install` command. Note that the version installed at that time will be the one that persists. Below is an example Dockerfile showing this method.
 
 ```Dockerfile
-FROM dokku/dokku:0.30.7
+FROM dokku/dokku:0.35.15
 RUN dokku plugin:install https://github.com/dokku/dokku-postgres.git postgres
 RUN dokku plugin:install https://github.com/dokku/dokku-redis.git redis
 ```
 
 ## SSH Key Management
 
-To initialize ssh-keys within the container, use `docker exec` to enter the container and run the appropriate ssh-keys commands.
+To initialize ssh-keys within the container, use `docker exec` to enter the container:
 
 ```shell
 docker exec -it dokku bash
+```
+
+Next, run the appropriate ssh-keys commands:
+
+```shell
+echo "$CONTENTS_OF_YOUR_PUBLIC_SSH_KEY_HERE" | dokku ssh-keys:add KEY_NAME
 ```
 
 Please see the [user management documentation](/docs/deployment/user-management.md) for more information.
@@ -86,4 +114,4 @@ Host dokku.docker
   Port 3022
 ```
 
-In the above example, the hostname `127.0.0.1` is being aliased to `dokku.docker`, while the port is being overriden to `3022`. All SSH commands - including git pushes - for the hostname `dokku.docker` will be transparently sent to `127.0.0.1:3022`.
+In the above example, the hostname `127.0.0.1` is being aliased to `dokku.docker`, while the port is being overridden to `3022`. All SSH commands - including git pushes - for the hostname `dokku.docker` will be transparently sent to `127.0.0.1:3022`.

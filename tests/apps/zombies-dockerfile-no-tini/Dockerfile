@@ -1,4 +1,4 @@
-FROM golang:1.20.5
+FROM golang:1.23.4
 
 ADD . /go/src/github.com/dokku/apps/web
 WORKDIR /go/src/github.com/dokku/apps/web

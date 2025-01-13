@@ -1,5 +1,6 @@
 # Git Deployment
 
+> [!IMPORTANT]
 > Subcommands new as of 0.12.0
 
 ```
@@ -7,14 +8,14 @@ git:allow-host <host>                             # Adds a host to known_hosts
 git:auth <host> [<username> <password>]           # Configures netrc authentication for a given git server
 git:from-archive [--archive-type ARCHIVE_TYPE] <app> <archive-url> [<git-username> <git-email>] # Updates an app's git repository with a given archive file
 git:from-image [--build-dir DIRECTORY] <app> <docker-image> [<git-username> <git-email>] # Updates an app's git repository with a given docker image
+git:generate-deploy-key                           # Generates a deploy ssh key
 git:load-image [--build-dir DIRECTORY] <app> <docker-image> [<git-username> <git-email>] # Updates an app's git repository with a docker image loaded from stdin
-git:sync [--build] <app> <repository> [<git-ref>] # Clone or fetch an app from remote git repo
+git:sync [--build|build-if-changes] <app> <repository> [<git-ref>] # Clone or fetch an app from remote git repo
 git:initialize <app>                              # Initialize a git repository for an app
 git:public-key                                    # Outputs the dokku public deploy key
 git:report [<app>] [<flag>]                       # Displays a git report for one or more apps
 git:set <app> <key> (<value>)                     # Set or clear a git property for an app
 git:status <app>                                  # Show the working tree status for an app
-git:unlock <app> [--force]                        # Removes previous git clone folder for new deployment
 ```
 
 Git-based deployment has been the traditional method of deploying applications in Dokku. As of v0.12.0, Dokku introduces a few ways to customize the experience of deploying via `git push`. A Git-based deployment currently supports building applications via:
@@ -25,7 +26,8 @@ Git-based deployment has been the traditional method of deploying applications i
 
 ## Usage
 
-> Warning: Pushing from a shallow clone is not currently supported and may have undefined behavior. Please unshallow your local repository before pushing to a Dokku app to avoid potential errors in the deployment process.
+> [!WARNING]
+> Pushing from a shallow clone is not currently supported and may have undefined behavior. Please unshallow your local repository before pushing to a Dokku app to avoid potential errors in the deployment process.
 
 ### Initializing an application
 
@@ -38,9 +40,10 @@ When an application is created via `git push`, Dokku will create the proper `pre
 dokku git:initialize node-js-app
 ```
 
-In order for the above command to succeed, the application _must_ already exist. 
+In order for the above command to succeed, the application _must_ already exist.
 
-> Warning: If the `pre-receive` hook was customized in any way, this will overwrite that hook with the current defaults for Dokku.
+> [!WARNING]
+> If the `pre-receive` hook was customized in any way, this will overwrite that hook with the current defaults for Dokku.
 
 ### Changing the deploy branch
 
@@ -72,6 +75,7 @@ Pushing multiple branches can also be supported by creating a [receive-branch](/
 
 ### Configuring the `GIT_REV` environment variable
 
+> [!IMPORTANT]
 > New as of 0.12.0
 
 Application deployments will include a special `GIT_REV` environment variable containing the current deployment sha being deployed. For rebuilds, this SHA will remain the same.
@@ -121,156 +125,9 @@ dokku git:set node-js-app keep-git-dir ""
 
 Please keep in mind that setting `keep-git-dir` to `true` may result in unstaged changes shown within the built container due to the build process generating application changes within the built app directory.
 
-### Initializing an app repository from a docker image
-
-> New as of 0.24.0
-
-A Dokku app repository can be initialized or updated from a Docker image via the `git:from-image` command. This command will either initialize the app repository or update it to include the specified Docker image via a `FROM` stanza. This is an excellent way of tracking changes when deploying only a given docker image, especially if deploying an image from a remote CI/CD pipeline.
-
-```shell
-dokku git:from-image node-js-app dokku/node-js-getting-started:latest
-```
-
-In the above example, Dokku will build the app as if the repository contained _only_ a `Dockerfile` with the following content:
-
-```Dockerfile
-FROM dokku/node-js-getting-started:latest
-```
-
-If the specified image already exists on the Dokku host, it will not be pulled again, though this behavior may be changed using [build phase docker-options](/docs/advanced-usage/docker-options.md).
-
-Triggering a build with the same arguments multiple times will result in Dokku exiting `0` early as there will be no changes detected. If the image tag is reused but the underlying image is different, it is recommended to use the image digest instead of the tag. This can be retrieved via the following command:
-
-```shell
-docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME
-```
-
-The resulting `git:from-image` call would then be:
-
-```shell
-# where the image sha is: sha256:9d187c3025d03c033dcc71e3a284fee53be88cc4c0356a19242758bc80cab673
-dokku git:from-image node-js-app dokku/node-js-getting-started@sha256:9d187c3025d03c033dcc71e3a284fee53be88cc4c0356a19242758bc80cab673
-```
-
-The `git:from-image` command can optionally take a git `user.name` and `user.email` argument (in that order) to customize the author. If the arguments are left empty, they will fallback to `Dokku` and `automated@dokku.sh`, respectively.
-
-```shell
-dokku git:from-image node-js-app dokku/node-js-getting-started:latest "Camila" "camila@example.com"
-```
-
-If the image is a private image that requires a docker login to access, the `registry:login` command should be used to log into the registry. See the [registry documentation](/docs/advanced-usage/registry-management.md#logging-into-a-registry) for more details on this process.
-
-Building an app from an image will result in the following files being extracted from the source image (with all custom paths specified for each file being respected):
-
-- `app.json`
-- `nginx.conf.sigil`
-- `Procfile`
-
-In the case where the repository is later modified to manually add any of the above files and deployed via `git push`, the files will still be extracted from the initial source image. To avoid this, please clear the `source-image` git property. It will be set back to the original source image on any subsequent `git:from-image` calls.
-
-```shell
-# sets an empty value
-dokku git:set node-js-app source-image
-```
-
-Finally, certain images may require a custom build context in order for `ONBUILD ADD` and `ONBUILD COPY` statements to succeed. A custom build context can be specified via the `--build-dir` flag. All files in the specified `build-dir` will be copied into the repository for use within the `docker build` process. The build context _must_ be specified on each deploy, and is not otherwise persisted between builds.
-
-```shell
-dokku git:from-image --build-dir path/to/build node-js-app dokku/node-js-getting-started:latest "Camila" "camila@example.com"
-```
-
-See the [dockerfile documentation](/docs/deployment/builders/dockerfiles.md) to learn about the different ways to configure Dockerfile-based deploys.
-
-### Initializing an app repository from an archive file
-
-> New as of 0.24.0
-
-A Dokku app repository can be initialized or updated from the contents of an archive file via the `git:from-archive` command. This is an excellent way of tracking changes when deploying pre-built binary archives, such as java jars or go binaries. This can also be useful when deploying directly from a GitHub repository at a specific commit.
-
-```shell
-dokku git:from-archive node-js-app https://github.com/dokku/smoke-test-app/releases/download/2.0.0/smoke-test-app.tar
-```
-
-In the above example, Dokku will build the app as if the repository contained the extracted contents of the specified archive file.
-
-Triggering a build with the same archive file multiple times will result in Dokku exiting `0` early as there will be no changes detected.
-
-The `git:from-archive` command can optionally take a git `user.name` and `user.email` argument (in that order) to customize the author. If the arguments are left empty, they will fallback to `Dokku` and `automated@dokku.sh`, respectively.
-
-```shell
-dokku git:from-archive node-js-app https://github.com/dokku/smoke-test-app/releases/download/2.0.0/smoke-test-app.tar "Camila" "camila@example.com"
-```
-
-The default archive type is always set to `.tar`. To use a different archive type, specify the `--archive-type` flag. Failure to do so will result in a failure to extract the archive.
-
-```shell
-dokku git:from-archive --archive-type zip node-js-app https://github.com/dokku/smoke-test-app/archive/2.0.0.zip "Camila" "camila@example.com"
-```
-
-Finally, if the archive url is specified as `--`, the archive will be fetched from stdin.
-
-```shell
-curl -sSL https://github.com/dokku/smoke-test-app/releases/download/2.0.0/smoke-test-app.tar | dokku git:from-archive node-js-app  --
-```
-
-### Initializing an app repository from a remote image without a registry
-
-> New as of 0.30.0
-
-A Dokku app repository can be initialized or updated from the contents of an image archive tar file  via the `git:load-image` command. This method can be used when a Docker Registry is unavailable to act as an intermediary for storing an image, such as when building an image in CI and deploying directly from that image.
-
-```shell
-docker image save dokku/node-js-getting-started:latest | ssh dokku@dokku.me git:load-image node-js-app dokku/node-js-getting-started:latest
-```
-
-In the above example, we are saving the image to a tar file via `docker image save`, streaming that to the Dokku host, and then running `git:load-image` on the incoming stream. Dokku will build the app as if the repository contained _only_ a `Dockerfile` with the following content:
-
-```Dockerfile
-FROM dokku/node-js-getting-started:latest
-```
-
-When deploying an app via `git:load-image`, it is highly recommended to use a unique image tag when building the image. Not doing so will result in Dokku exiting `0` early as there will be no changes detected. If the image tag is reused but the underlying image is different, it is recommended to use the image digest instead of the tag. This can be retrieved via the following command:
-
-```shell
-docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME
-```
-
-The resulting `git:load-image` call would then be:
-
-```shell
-# where the image sha is: sha256:9d187c3025d03c033dcc71e3a284fee53be88cc4c0356a19242758bc80cab673
-docker image save dokku/node-js-getting-started:latest | ssh dokku@dokku.me git:load-image node-js-app dokku/node-js-getting-started@sha256:9d187c3025d03c033dcc71e3a284fee53be88cc4c0356a19242758bc80cab673
-```
-
-The `git:load-image` command can optionally take a git `user.name` and `user.email` argument (in that order) to customize the author. If the arguments are left empty, they will fallback to `Dokku` and `automated@dokku.sh`, respectively.
-
-```shell
-docker image save dokku/node-js-getting-started:latest | ssh dokku@dokku.me git:load-image node-js-app dokku/node-js-getting-started:latest "Camila" "camila@example.com"
-```
-
-Building an app from an image will result in the following files being extracted from the source image (with all custom paths specified for each file being respected):
-
-- `app.json`
-- `nginx.conf.sigil`
-- `Procfile`
-
-In the case where the repository is later modified to manually add any of the above files and deployed via `git push`, the files will still be extracted from the initial source image. To avoid this, please clear the `source-image` git property. It will be set back to the original source image on any subsequent `git:load-image` calls.
-
-```shell
-# sets an empty value
-dokku git:set node-js-app source-image
-```
-
-Finally, certain images may require a custom build context in order for `ONBUILD ADD` and `ONBUILD COPY` statements to succeed. A custom build context can be specified via the `--build-dir` flag. All files in the specified `build-dir` will be copied into the repository for use within the `docker build` process. The build context _must_ be specified on each deploy, and is not otherwise persisted between builds.
-
-```shell
-docker image save dokku/node-js-getting-started:latest | ssh dokku@dokku.me git:load-image --build-dir path/to/build node-js-app dokku/node-js-getting-started:latest "Camila" "camila@example.com"
-```
-
-See the [dockerfile documentation](/docs/deployment/builders/dockerfiles.md) to learn about the different ways to configure Dockerfile-based deploys.
-
 ### Initializing an app repository from a remote repository
 
+> [!IMPORTANT]
 > New as of 0.23.0
 
 A Dokku app repository can be initialized or updated from a remote git repository via the `git:sync` command. This command will either clone or fetch updates from a remote repository and has undefined behavior if the history cannot be fast-fowarded to the referenced repository reference. Any repository that can be cloned by the `dokku` user can be specified.
@@ -300,8 +157,15 @@ By default, this command does not trigger an application build. To do so during 
 dokku git:sync --build node-js-app https://github.com/heroku/node-js-getting-started.git
 ```
 
+When running `git:sync` without a reference, it may be useful to only build when there are changes. To do so, specify the `--build-if-changes` flag.
+
+```shell
+dokku git:sync --build-if-changes node-js-app https://github.com/heroku/node-js-getting-started.git
+```
+
 ### Initializing from private repositories
 
+> [!IMPORTANT]
 > New as of 0.24.0
 
 Initializing from a private repository requires one of the following:
@@ -331,9 +195,40 @@ dokku git:allow-host github.com
 
 Note that this command is currently not idempotent and may add duplicate entries to the `~dokku/.ssh/known_hosts` file.
 
+### Creating a cloning ssh key pair
+
+> [!IMPORTANT]
+> New as of 0.33.0
+
+While most repositories can be authenticated to via the `git:auth` command, some users may prefer to use an ssh key. This can be generated via the `git:generate-deploy-key` command, which generates a passwordless ed25519 key-pair.
+
+```shell
+dokku git:generate-deploy-key
+```
+
+```
+Generating public/private ed25519 key pair.
+Your identification has been saved in /home/dokku/.ssh/id_ed25519
+Your public key has been saved in /home/dokku/.ssh/id_ed25519.pub
+The key fingerprint is:
+SHA256:PvlvVfbpYvkmA87rTfLUq07e3GarRN1BcLqDSjod+p8 dokku@ubuntu
+The key's randomart image is:
++--[ED25519 256]--+
+|             ..o |
+|              +  |
+|             . . |
+|            . o =|
+|        So . + ++|
+|       .=.o.. +..|
+|       ++oo..*o. |
+|        oo o%*oo=|
+|         .+E=BOOo|
++----[SHA256]-----+
+```
+
 ### Verifying the cloning public key
 
-In order to clone a remote repository, the remote server should have the Dokku host's public key configured. This plugin does not currently create this key, but if there is one available, it can be shown via the `git:public-key` command.
+In order to clone a remote repository, the remote server should have the Dokku host's public key configured. This plugin does not currently create this key, but if can be shown via the `git:public-key` command.
 
 ```shell
 dokku git:public-key

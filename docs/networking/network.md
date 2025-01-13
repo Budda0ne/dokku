@@ -1,17 +1,18 @@
 # Network Management
 
+> [!IMPORTANT]
 > New as of 0.11.0, Enhanced in 0.20.0
 
 ```
-network:create <network>                 # Creates an attachable docker network
-network:destroy <network>                # Destroys a docker network
-network:exists <network>                 # Checks if a docker network exists
-network:info <network>                   # Outputs information about a docker network
-network:list                             # Lists all docker networks
-network:report [<app>] [<flag>]          # Displays a network report for one or more apps
-network:rebuild <app>                    # Rebuilds network settings for an app
-network:rebuildall                       # Rebuild network settings for all apps
-network:set <app> <key> (<value>)        # Set or clear a network property for an app
+network:create <network>                    # Creates an attachable docker network
+network:destroy <network>                   # Destroys a docker network
+network:exists <network>                    # Checks if a docker network exists
+network:info <network> [--format text|json] # Outputs information about a docker network
+network:list [--format text|json]           # Lists all docker networks
+network:report [<app>] [<flag>]             # Displays a network report for one or more apps
+network:rebuild <app>                       # Rebuilds network settings for an app
+network:rebuildall                          # Rebuild network settings for all apps
+network:set <app> <key> (<value>)           # Set or clear a network property for an app
 ```
 
 The Network plugin allows developers to abstract the concept of container network management, allowing developers to both change what networks a given container is attached to as well as rebuild the configuration on the fly.
@@ -20,6 +21,7 @@ The Network plugin allows developers to abstract the concept of container networ
 
 ### Listing networks
 
+> [!IMPORTANT]
 > New as of 0.20.0, Requires Docker 1.21+
 
 You can easily list all available networks using the `network:list` command:
@@ -49,8 +51,24 @@ none
 test-network
 ```
 
+The `network:list` command also takes a `--format` flag, with the valid options including `text` (default) and `json`. The `json` output format can be used for automation purposes:
+
+```shell
+dokku network:list --format json
+```
+
+```
+[
+    {"CreatedAt":"2024-02-25T01:55:24.275184461Z","Driver":"bridge","ID":"d18df2d21433","Internal":false,"IPv6":false,"Labels":{},"Name":"bridge","Scope":"local"},
+    {"CreatedAt":"2024-02-25T01:55:24.275184461Z","Driver":"bridge","ID":"f50fa882e7de","Internal":false,"IPv6":false,"Labels":{},"Name":"test-network","Scope":"local"},
+    {"CreatedAt":"2024-02-25T01:55:24.275184461Z","Driver":"host","ID":"ab6a59291443","Internal":false,"IPv6":false,"Labels":{},"Name":"host","Scope":"local"},
+    {"CreatedAt":"2024-02-25T01:55:24.275184461Z","Driver":"null","ID":"e2506bc8b7d7","Internal":false,"IPv6":false,"Labels":{},"Name":"none","Scope":"local"}
+]
+```
+
 ### Creating a network
 
+> [!IMPORTANT]
 > New as of 0.20.0, Requires Docker 1.21+
 
 Docker networks can be created via the `network:create` command. Executing this command will create an attachable `bridge` network. This can be used to route requests between containers without going through any public network.
@@ -67,6 +85,7 @@ Specifying other additional flags or other types of networks can be created dire
 
 ### Destroying a network
 
+> [!IMPORTANT]
 > New as of 0.20.0, Requires Docker 1.21+
 
 A Docker network without any associated containers may be destroyed via the `network:destroy` command. Docker will refuse to destroy networks that have containers attached.
@@ -75,7 +94,7 @@ A Docker network without any associated containers may be destroyed via the `net
 dokku network:destroy test-network
 ```
 
-```shell
+```
  !     WARNING: Potentially Destructive Action
  !     This command will destroy network test.
  !     To proceed, type "test"
@@ -89,12 +108,13 @@ As the command is destructive, it will default to asking for confirmation before
 dokku --force network:destroy test-network
 ```
 
-```shell
+```
 -----> Destroying network test
 ```
 
 ### Checking if a network exists
 
+> [!IMPORTANT]
 > New as of 0.20.0, Requires Docker 1.21+
 
 For CI/CD pipelines, it may be useful to see if an network exists before creating a new network. You can do so via the `network:exists` command:
@@ -111,16 +131,31 @@ The `network:exists` command will return non-zero if the network does not exist,
 
 ### Checking network info
 
-> New as of 0.20.0, Requires Docker 1.21+
+> [!IMPORTANT]
+> New as of 0.35.3
 
 Network information can be retrieved via the `network:info` command. This is a slightly different version of the `docker network` command.
 
 ```shell
-dokku network:info test-network
+dokku network:info bridge
 ```
 
 ```
-// TODO
+=====> bridge network information
+       ID:       d18df2d21433
+       Name:     bridge
+       Driver:   bridge
+       Scope:    local
+```
+
+The `network:info` command also takes a `--format` flag, with the valid options including `text` (default) and `json`. The `json` output format can be used for automation purposes:
+
+```shell
+dokku network:info bridge --format json
+```
+
+```
+{"CreatedAt":"2024-02-25T01:55:24.275184461Z","Driver":"bridge","ID":"d18df2d21433","Internal":false,"IPv6":false,"Labels":{},"Name":"bridge","Scope":"local"}
 ```
 
 ### Routing an app to a known ip:port combination
@@ -155,19 +190,30 @@ Only a single `$IP:$PORT` combination can be routed to for a given app, and that
 
 ### Attaching an app to a network
 
+> [!IMPORTANT]
 > New as of 0.20.0, Requires Docker 1.21+
 
 Apps will default to being associated with the default `bridge` network or a network specified by the `initial-network` network property. Additionally, an app can be attached to `attachable` networks by changing the `attach-post-create` or `attach-post-deploy` network properties when using the [docker-local scheduler](/docs/deployment/schedulers/docker-local.md). A change in these values will require an app deploy or rebuild.
 
 ```shell
 # associates the network after a container is created but before it is started
+# commonly used for cross-app networking
 dokku network:set node-js-app attach-post-create test-network
 
 # associates the network after the deploy is successful but before the proxy is updated
+# used for cross-app networking when healthchecks must be invoked first
 dokku network:set node-js-app attach-post-deploy other-test-network
 
 # associates the network at container creation
+# typically blocks access to services and external routing
 dokku network:set node-js-app initial-network global-network
+```
+
+Multiple networks can also be specified for the `attach-post-create` and `attach-post-deploy` phases.
+
+```shell
+# one or more networks can be specified
+dokku network:set node-js-app attach-post-create test-network test-network-2
 ```
 
 Setting the `attach` network property to an empty value will de-associate the container with the network.
@@ -196,7 +242,8 @@ dokku network:set --global initial-network
 
 #### Network Aliases
 
-> Note: This feature is only available when an app has been attached to a network other than the default `bridge` network.
+> [!NOTE]
+> This feature is only available when an app has been attached to a network other than the default `bridge` network.
 
 When a container created for a deployment is being attached to a network - regardless of which network property was used - a network alias of the pattern `APP.PROC_TYPE` will be added to all containers. This can be used to load-balance requests between containers. For an application named `node-js-app` with a process type of web, the network alias - or resolvable DNS record within the network - will be:
 
@@ -237,7 +284,7 @@ The default value may be set by passing an empty value for the option:
 dokku network:set node-js-app tld
 ```
 
-The `tld` property can also be set globally. The global default is emty string, and the global value is used when no app-specific value is set.
+The `tld` property can also be set globally. The global default is empty string, and the global value is used when no app-specific value is set.
 
 ```shell
 dokku network:set --global tld svc.cluster.local
@@ -282,7 +329,8 @@ Whatever the reason, the semantics of the two network hooks are important and ar
     - Use case: When another container on the network is already running and needed by this container.
     - Example: A key-value store exposing itself to all your apps may be on the `initial-network`.
 
-> Warning: If the attachment fails during the `running` container state, this may result in your application failing to respond to proxied requests once older containers are removed.
+> [!WARNING]
+> If the attachment fails during the `running` container state, this may result in your application failing to respond to proxied requests once older containers are removed.
 
 ### Rebuilding network settings
 
@@ -334,7 +382,7 @@ CONTAINER ID        IMAGE                      COMMAND                CREATED   
 
 As such, the container's IP address will be an internal IP, and thus it is only accessible on the host itself:
 
-```
+```shell
 docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' node-js-app.web.1
 ```
 

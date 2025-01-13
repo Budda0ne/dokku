@@ -4,6 +4,255 @@ set -eo pipefail
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/property-functions"
 
+fn-nginx-access-log-format() {
+  declare desc="get the configured access log format"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "access-log-format"
+}
+
+fn-nginx-computed-access-log-format() {
+  declare desc="get the computed access log format"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "access-log-format"
+}
+
+fn-nginx-global-access-log-format() {
+  declare desc="get the global access log format"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "access-log-format"
+}
+
+fn-nginx-access-log-path() {
+  declare desc="get the configured access log path"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "access-log-path"
+}
+
+fn-nginx-computed-access-log-path() {
+  declare desc="get the computed access log path"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "access-log-path"
+}
+
+fn-nginx-global-access-log-path() {
+  declare desc="get the global access log path"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "access-log-path"
+}
+
+fn-nginx-bind-address-ipv4() {
+  declare desc="get the configured ipv4 bind address"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "bind-address-ipv4"
+}
+
+fn-nginx-computed-bind-address-ipv4() {
+  declare desc="get the computed ipv4 bind address"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "bind-address-ipv4"
+}
+
+fn-nginx-global-bind-address-ipv4() {
+  declare desc="get the global ipv4 bind address"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "bind-address-ipv4"
+}
+
+fn-nginx-bind-address-ipv6() {
+  declare desc="get the configured ipv6 bind address"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "bind-address-ipv6"
+}
+
+fn-nginx-computed-bind-address-ipv6() {
+  declare desc="get the computed ipv6 bind address"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "bind-address-ipv6"
+}
+
+fn-nginx-global-bind-address-ipv6() {
+  declare desc="get the global ipv6 bind address"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "bind-address-ipv6"
+}
+
+fn-nginx-client-body-timeout() {
+  declare desc="get the configured client body timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "client-body-timeout"
+}
+
+fn-nginx-computed-client-body-timeout() {
+  declare desc="get the computed client body timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "client-body-timeout"
+}
+
+fn-nginx-global-client-body-timeout() {
+  declare desc="get the global client body timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "client-body-timeout"
+}
+
+fn-nginx-client-header-timeout() {
+  declare desc="get the configured client header timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "client-header-timeout"
+}
+
+fn-nginx-computed-client-header-timeout() {
+  declare desc="get the computed client header timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "client-header-timeout"
+}
+
+fn-nginx-global-client-header-timeout() {
+  declare desc="get the global client header timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "client-header-timeout"
+}
+
+fn-nginx-client-max-body-size() {
+  declare desc="get the configured client max body size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "client-max-body-size"
+}
+
+fn-nginx-computed-client-max-body-size() {
+  declare desc="get the computed client max body size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "client-max-body-size"
+}
+
+fn-nginx-global-client-max-body-size() {
+  declare desc="get the global client max body size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "client-max-body-size"
+}
+
+fn-nginx-disable-custom-config() {
+  declare desc="get the configured disable-custom-config value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "disable-custom-config"
+}
+
+fn-nginx-computed-disable-custom-config() {
+  declare desc="get the computed disable-custom-config value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "disable-custom-config"
+}
+
+fn-nginx-global-disable-custom-config() {
+  declare desc="get the global disable-custom-config value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "disable-custom-config"
+}
+
+fn-nginx-error-log-path() {
+  declare desc="get the configured error log path"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "error-log-path"
+}
+
+fn-nginx-computed-error-log-path() {
+  declare desc="get the computed error log path"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "error-log-path"
+}
+
+fn-nginx-global-error-log-path() {
+  declare desc="get the global error log path"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "error-log-path"
+}
+
+fn-nginx-hsts-include-subdomains() {
+  declare APP="$1"
+  fn-get-property --app "$APP" "hsts-include-subdomains"
+}
+
+fn-nginx-computed-hsts-include-subdomains() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --computed "hsts-include-subdomains"
+}
+
+fn-nginx-global-hsts-include-subdomains() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --global "hsts-include-subdomains"
+}
+
+fn-nginx-hsts-max-age() {
+  declare APP="$1"
+  fn-get-property --app "$APP" "hsts-max-age"
+}
+
+fn-nginx-computed-hsts-max-age() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --computed "hsts-max-age"
+}
+
+fn-nginx-global-hsts-max-age() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --global "hsts-max-age"
+}
+
+fn-nginx-hsts-preload() {
+  declare APP="$1"
+  fn-get-property --app "$APP" "hsts-preload"
+}
+
+fn-nginx-computed-hsts-preload() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --computed "hsts-preload"
+}
+
+fn-nginx-global-hsts-preload() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --global "hsts-preload"
+}
+
+fn-nginx-hsts() {
+  declare APP="$1"
+  fn-get-property --app "$APP" "hsts"
+}
+
+fn-nginx-computed-hsts() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --computed "hsts"
+}
+
+fn-nginx-global-hsts() {
+  declare APP="$1"
+  fn-get-property --app "$APP" --global "hsts"
+}
+
 fn-nginx-vhosts-last-visited-at() {
   declare APP="$1"
   local LOG_PATH=$(fn-nginx-access-log-path "$APP")
@@ -13,50 +262,358 @@ fn-nginx-vhosts-last-visited-at() {
   fi
 }
 
-fn-nginx-hsts-is-enabled() {
-  declare APP="$1"
-  local hsts_is_enabled="$(fn-plugin-property-get-default "nginx" "$APP" "hsts" "")"
+fn-nginx-log-root() {
+  declare desc="get the nginx log root"
+  local NGINX_LOG_ROOT="/var/log/nginx"
 
-  if [[ "$hsts_is_enabled" == "" ]]; then
-    hsts_is_enabled="$(fn-plugin-property-get-default "nginx" "--global" "hsts" "true")"
-  fi
-
-  echo "$hsts_is_enabled"
+  fn-nginx-vhosts-uses-openresty && NGINX_LOG_ROOT="/var/log/openresty"
+  echo "$NGINX_LOG_ROOT"
 }
 
-fn-nginx-computed-nginx-conf-sigil-path() {
+fn-nginx-keepalive-timeout() {
+  declare desc="get the configured keepalive timeout"
   declare APP="$1"
-  local conf_sigil_path="$(fn-nginx-nginx-conf-sigil-path "$APP")"
 
-  if [[ "$conf_sigil_path" == "" ]]; then
-    conf_sigil_path="$(fn-nginx-global-nginx-conf-sigil-path)"
-  fi
-
-  echo "$conf_sigil_path"
+  fn-get-property --app "$APP" "keepalive-timeout"
 }
 
-fn-nginx-global-nginx-conf-sigil-path() {
+fn-nginx-computed-keepalive-timeout() {
+  declare desc="get the computed keepalive timeout"
   declare APP="$1"
 
-  fn-plugin-property-get-default "nginx" "--global" "nginx-conf-sigil-path" "nginx.conf.sigil"
+  fn-get-property --app "$APP" --computed "keepalive-timeout"
+}
+
+fn-nginx-global-keepalive-timeout() {
+  declare desc="get the global keepalive timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "keepalive-timeout"
+}
+
+fn-nginx-lingering-timeout() {
+  declare desc="get the configured lingering timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "lingering-timeout"
+}
+
+fn-nginx-computed-lingering-timeout() {
+  declare desc="get the computed lingering timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "lingering-timeout"
+}
+
+fn-nginx-global-lingering-timeout() {
+  declare desc="get the global lingering timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "lingering-timeout"
 }
 
 fn-nginx-nginx-conf-sigil-path() {
   declare APP="$1"
-  fn-plugin-property-get-default "nginx" "$APP" "nginx-conf-sigil-path" ""
+  fn-get-property --app "$APP" "nginx-conf-sigil-path"
+}
+
+fn-nginx-computed-nginx-conf-sigil-path() {
+  declare APP="$1"
+  fn-get-property --computed --app "$APP" "nginx-conf-sigil-path"
+}
+
+fn-nginx-global-nginx-conf-sigil-path() {
+  declare APP="$1"
+  fn-get-property --global "nginx-conf-sigil-path"
+}
+
+fn-nginx-proxy-buffer-size() {
+  declare desc="get the configured proxy buffer size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-buffer-size"
+}
+
+fn-nginx-computed-proxy-buffer-size() {
+  declare desc="get the computed proxy buffer size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-buffer-size"
+}
+
+fn-nginx-global-proxy-buffer-size() {
+  declare desc="get the global proxy buffer size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-buffer-size"
+}
+
+fn-nginx-proxy-buffering() {
+  declare desc="get the configured proxy buffering"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-buffering"
+}
+
+fn-nginx-computed-proxy-buffering() {
+  declare desc="get the computed proxy buffering"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-buffering"
+}
+fn-nginx-global-proxy-buffering() {
+  declare desc="get the global proxy buffering"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-buffering"
+}
+
+fn-nginx-proxy-buffers() {
+  declare desc="get the configured proxy buffers"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-buffers"
+}
+
+fn-nginx-computed-proxy-buffers() {
+  declare desc="get the computed proxy buffers"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-buffers"
+}
+
+fn-nginx-global-proxy-buffers() {
+  declare desc="get the global proxy buffers"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-buffers"
+}
+
+fn-nginx-proxy-busy-buffers-size() {
+  declare desc="get the configured proxy busy buffers size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-busy-buffers-size"
+}
+
+fn-nginx-computed-proxy-busy-buffers-size() {
+  declare desc="get the computed proxy busy buffers size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-busy-buffers-size"
+}
+
+fn-nginx-global-proxy-busy-buffers-size() {
+  declare desc="get the global proxy busy buffers size"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-busy-buffers-size"
+}
+
+fn-nginx-proxy-connect-timeout() {
+  declare desc="get the configured proxy connect timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-connect-timeout"
+}
+
+fn-nginx-computed-proxy-connect-timeout() {
+  declare desc="get the computed proxy connect timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-connect-timeout"
+}
+
+fn-nginx-global-proxy-connect-timeout() {
+  declare desc="get the global proxy connect timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-connect-timeout"
+}
+
+fn-nginx-proxy-read-timeout() {
+  declare desc="get the configured proxy read timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-read-timeout"
+}
+
+fn-nginx-computed-proxy-read-timeout() {
+  declare desc="get the computed proxy read timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-read-timeout"
+}
+
+fn-nginx-global-proxy-read-timeout() {
+  declare desc="get the global proxy read timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-read-timeout"
+}
+
+fn-nginx-proxy-send-timeout() {
+  declare desc="get the configured proxy send timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "proxy-send-timeout"
+}
+
+fn-nginx-computed-proxy-send-timeout() {
+  declare desc="get the computed proxy send timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "proxy-send-timeout"
+}
+
+fn-nginx-global-proxy-send-timeout() {
+  declare desc="get the global proxy send timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "proxy-send-timeout"
+}
+
+fn-nginx-send-timeout() {
+  declare desc="get the configured send timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "send-timeout"
+}
+
+fn-nginx-computed-send-timeout() {
+  declare desc="get the computed send timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "send-timeout"
+}
+
+fn-nginx-global-send-timeout() {
+  declare desc="get the global send timeout"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "send-timeout"
+}
+
+fn-nginx-underscore-in-headers() {
+  declare desc="get the configured underscore in headers value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "underscore-in-headers"
+}
+
+fn-nginx-computed-underscore-in-headers() {
+  declare desc="get the computed underscore in headers value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "underscore-in-headers"
+}
+
+fn-nginx-global-underscore-in-headers() {
+  declare desc="get the global underscore in headers value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "underscore-in-headers"
+}
+
+fn-nginx-x-forwarded-for-value() {
+  declare desc="get the configured x-forwarded-for value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "x-forwarded-for-value"
+}
+
+fn-nginx-computed-x-forwarded-for-value() {
+  declare desc="get the computed x-forwarded-for value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "x-forwarded-for-value"
+}
+
+fn-nginx-global-x-forwarded-for-value() {
+  declare desc="get the global x-forwarded-for value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "x-forwarded-for-value"
+}
+
+fn-nginx-x-forwarded-port-value() {
+  declare desc="get the configured x-forwarded-port value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "x-forwarded-port-value"
+}
+
+fn-nginx-computed-x-forwarded-port-value() {
+  declare desc="get the computed x-forwarded-port value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "x-forwarded-port-value"
+}
+
+fn-nginx-global-x-forwarded-port-value() {
+  declare desc="get the global x-forwarded-port value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "x-forwarded-port-value"
+}
+
+fn-nginx-x-forwarded-proto-value() {
+  declare desc="get the configured x-forwarded-proto value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "x-forwarded-proto-value"
+}
+
+fn-nginx-computed-x-forwarded-proto-value() {
+  declare desc="get the computed x-forwarded-proto value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "x-forwarded-proto-value"
+}
+
+fn-nginx-global-x-forwarded-proto-value() {
+  declare desc="get the global x-forwarded-proto value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "x-forwarded-proto-value"
+}
+
+fn-nginx-x-forwarded-ssl() {
+  declare desc="get the configured x-forwarded-ssl value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" "x-forwarded-ssl"
+}
+
+fn-nginx-computed-x-forwarded-ssl() {
+  declare desc="get the computed x-forwarded-ssl value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --computed "x-forwarded-ssl"
+}
+
+fn-nginx-global-x-forwarded-ssl() {
+  declare desc="get the global x-forwarded-ssl value"
+  declare APP="$1"
+
+  fn-get-property --app "$APP" --global "x-forwarded-ssl"
 }
 
 fn-nginx-vhosts-manage-hsts() {
   declare APP="$1" SSL_ENABLED="$2"
-  local HSTS="$(fn-nginx-hsts-is-enabled "$APP")"
-  local HSTS_INCLUDE_SUBDOMAINS="$(fn-plugin-property-get-default "nginx" "$APP" "hsts-include-subdomains" "true")"
-  local HSTS_MAX_AGE="$(fn-plugin-property-get-default "nginx" "$APP" "hsts-max-age" "15724800")"
-  local HSTS_PRELOAD="$(fn-plugin-property-get-default "nginx" "$APP" "hsts-preload" "false")"
+  local HSTS="$(fn-nginx-computed-hsts "$APP")"
+  local HSTS_INCLUDE_SUBDOMAINS="$(fn-nginx-computed-hsts-include-subdomains "$APP")"
+  local HSTS_MAX_AGE="$(fn-nginx-computed-hsts-max-age "$APP")"
+  local HSTS_PRELOAD="$(fn-nginx-computed-hsts-preload "$APP")"
   local NGINX_HSTS_CONF="$DOKKU_ROOT/$APP/nginx.conf.d/hsts.conf"
   local HSTS_TEMPLATE="$PLUGIN_AVAILABLE_PATH/nginx-vhosts/templates/hsts.conf.sigil"
+  local NGINX_TEMPLATE_SOURCE="built-in"
+  local is_custom_hsts_template=false
 
   CUSTOM_HSTS_TEMPLATE="$(plugn trigger nginx-app-template-source "$APP" "hsts-config")"
   if [[ -n "$CUSTOM_HSTS_TEMPLATE" ]]; then
+    is_custom_hsts_template=true
+    NGINX_TEMPLATE_SOURCE="plugin-supplied"
     HSTS_TEMPLATE="$CUSTOM_HSTS_TEMPLATE"
   fi
 
@@ -65,7 +622,7 @@ fn-nginx-vhosts-manage-hsts() {
     return
   fi
 
-  dokku_log_verbose_quiet "Enabling HSTS"
+  dokku_log_verbose_quiet "Enabling HSTS (using $NGINX_TEMPLATE_SOURCE template)"
   local HSTS_HEADERS=""
   if [[ -n "$HSTS_MAX_AGE" ]]; then
     HSTS_HEADERS="max-age=$HSTS_MAX_AGE"
@@ -113,6 +670,57 @@ fn-nginx-vhosts-nginx-location() {
   echo "$NGINX_LOCATION"
 }
 
+fn-nginx-vhosts-nginx-is-running() {
+  declare desc="check if nginx is running"
+  local NGINX_INIT_NAME
+
+  NGINX_INIT_NAME=nginx
+  if fn-nginx-vhosts-uses-openresty; then
+    NGINX_INIT_NAME=openresty
+  fi
+
+  case "$DOKKU_DISTRO" in
+    debian | raspbian)
+      if [[ -x "$systemctl_path" ]]; then
+        if sudo "$systemctl_path" is-active --quiet "$NGINX_INIT_NAME"; then
+          return 0
+        fi
+      else
+        dokku_log_warn "Checking $NGINX_INIT_NAME status is not possible for init.d managed services"
+        return 0
+      fi
+      ;;
+
+    ubuntu)
+      # support docker-based installations
+      if [[ "$DOKKU_INIT_SYSTEM" == "sv" ]]; then
+        if sudo /usr/bin/sv status $NGINX_INIT_NAME | grep -q "^run:"; then
+          return 0
+        fi
+      elif [[ -x "$systemctl_path" ]]; then
+        if sudo "$systemctl_path" is-active --quiet "$NGINX_INIT_NAME"; then
+          return 0
+        fi
+      elif [[ -x /usr/bin/sv ]]; then
+        if sudo /usr/bin/sv status $NGINX_INIT_NAME | grep -q "^run:"; then
+          return 0
+        fi
+      else
+        dokku_log_warn "Checking $NGINX_INIT_NAME status is not possible for init.d managed services"
+        return 0
+      fi
+      ;;
+
+    arch)
+      if sudo "$systemctl_path" is-active --quiet "$NGINX_INIT_NAME"; then
+        return 0
+      fi
+      ;;
+  esac
+
+  return 1
+}
+
 fn-nginx-vhosts-nginx-init-cmd() {
   declare desc="start nginx for given distros"
   declare CMD="$1"
@@ -123,17 +731,28 @@ fn-nginx-vhosts-nginx-init-cmd() {
     NGINX_INIT_NAME=openresty
   fi
 
+  local systemctl_path=/bin/systemctl
+  if [[ -x /usr/bin/systemctl ]]; then
+    systemctl_path=/usr/bin/systemctl
+  fi
+
   case "$DOKKU_DISTRO" in
     debian | raspbian)
-      sudo /usr/sbin/invoke-rc.d "$NGINX_INIT_NAME" "$CMD"
+      if [[ -x "$systemctl_path" ]]; then
+        sudo "$systemctl_path" "$CMD" "$NGINX_INIT_NAME"
+      else
+        sudo /usr/sbin/invoke-rc.d "$NGINX_INIT_NAME" "$CMD"
+      fi
       ;;
 
     ubuntu)
       # support docker-based installations
-      if [[ -x /usr/bin/sv ]]; then
+      if [[ "$DOKKU_INIT_SYSTEM" == "sv" ]]; then
         sudo /usr/bin/sv "$CMD" "$NGINX_INIT_NAME"
-      elif [[ -x /usr/bin/systemctl ]]; then
-        sudo /usr/bin/systemctl "$CMD" "$NGINX_INIT_NAME"
+      elif [[ -x "$systemctl_path" ]]; then
+        sudo "$systemctl_path" "$CMD" "$NGINX_INIT_NAME"
+      elif [[ -x /usr/bin/sv ]]; then
+        sudo /usr/bin/sv "$CMD" "$NGINX_INIT_NAME"
       elif [[ "$CMD" == "enable" ]] || [[ "$CMD" == "disable" ]]; then
         dokku_log_warn "Running $CMD is not possible for init.d managed services"
       else
@@ -142,15 +761,15 @@ fn-nginx-vhosts-nginx-init-cmd() {
       ;;
 
     arch)
-      sudo /usr/bin/systemctl "$CMD" "$NGINX_INIT_NAME"
+      sudo "$systemctl_path" "$CMD" "$NGINX_INIT_NAME"
       ;;
   esac
 }
 
-fn-get-pagesize() {
-  declare desc="return the underlying system's memory page size"
+fn-get-property() {
+  declare desc="get a property from the nginx plugin"
 
-  "$PLUGIN_CORE_AVAILABLE_PATH/nginx-vhosts/pagesize"
+  "$PLUGIN_CORE_AVAILABLE_PATH/nginx-vhosts/nginx-property" "$@"
 }
 
 nginx_vhosts_validate_single_func() {

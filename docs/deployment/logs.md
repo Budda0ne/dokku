@@ -43,7 +43,8 @@ The above command will show logs continually from the web process.
 
 ### Failed deploy logs
 
-> Warning: The default [docker-local scheduler](/docs/deployment/schedulers/docker-local.md) will "store" these until the next deploy or until the old containers are garbage collected - whichever runs first. If you require the logs beyond this point in time, please ship the logs to a centralized log server.
+> [!WARNING]
+> The default [docker-local scheduler](/docs/deployment/schedulers/docker-local.md) will "store" these until the next deploy or until the old containers are garbage collected - whichever runs first. If you require the logs beyond this point in time, please ship the logs to a centralized log server.
 
 In some cases, it may be useful to retrieve the logs from a previously failed deploy.
 
@@ -89,13 +90,15 @@ dokku logs:set --global max-size
 
 ### Vector Logging Shipping
 
+> [!IMPORTANT]
 > New as of 0.22.6
 
 Vector is an open-source, lightweight and ultra-fast tool for building observability pipelines. Dokku integrates with it for shipping container logs for the `docker-local` scheduler. Users may configure log-shipping on a per-app or global basis, neither of which interfere with the `dokku logs` commands.
 
 #### Starting the Vector container
 
-> Warning: While the default vector image may be updated over time, this will not impact running vector containers. Users are encouraged to view any Dokku and Vector changelogs to ensure their system will continue running as expected.
+> [!WARNING]
+> While the default vector image may be updated over time, this will not impact running vector containers. Users are encouraged to view any Dokku and Vector changelogs to ensure their system will continue running as expected.
 
 Vector may be started via the `logs:vector-start` command.
 
@@ -151,6 +154,27 @@ dokku logs:vector-logs --tail --num 10
 ```
 
 The above command will show logs continually from the vector container, with an initial history of 10 log lines
+
+#### Changing the vector image
+
+Dokku integrates with a Vector docker image version that is known to be compatible with the documentation. In some cases, it may be useful to specify an alternative image version. To do so, set the global `vector-image` property.
+
+```shell
+dokku logs:set --global vector-image timberio/vector:0.35.X-debian
+```
+
+Once set, the vector container will need to be stopped and then started. Note that specifying the `--vector-image` flag on the `logs:vector-start` will override the setting.
+
+```shell
+dokku logs:vector-stop
+dokku logs:vector-start
+```
+
+Setting this to an empty string will reset the version to the version currently compatible with the Dokku installation.
+
+```shell
+dokku logs:set --global vector-image
+```
 
 #### Configuring a log sink
 
@@ -208,4 +232,34 @@ For some sinks - such as the `http` sink - it may be useful to use special chara
 dokku logs:set test vector-sink "http://?uri=https%3A//loggerservice.com%3A1234/%3Ftoken%3Dabc1234%26type%3Dvector"
 ```
 
-Please read the [sink documentation](https://vector.dev/docs/reference/sinks/) for your sink of choice to configure the sink as desired.
+Please read the [sink documentation](https://vector.dev/docs/reference/configuration/sinks/) for your sink of choice to configure the sink as desired.
+
+##### Configuring the app label
+
+Logs shipped by vector include the label `com.dokku.app-name`, which is an alias for the app name. This can be changed via the `app-label-alias` logs property with the `logs:set` command. Specifying a new alias will reload any running vector container.
+
+```shell
+# setting the sink value in quotes is encouraged to avoid
+# issues with ampersand encoding in shell commands
+dokku logs:set node-js-app app-label-alias "app-name"
+```
+
+An alias may be removed by setting an empty value, which will also reload the running vector container.
+
+```shell
+dokku logs:set node-js-app app-label-alias
+```
+
+Only one alias may be specified on a per-app basis at a given time.
+
+App label aliases can also be specified globally by specifying the `--global` flag to `logs:set` with no app name specified:
+
+```shell
+dokku logs:set --global app-label-alias "app-name"
+```
+
+As with app-specific label alias settings, the global value may also be cleared by setting no value.
+
+```shell
+dokku logs:set --global app-label-alias
+```

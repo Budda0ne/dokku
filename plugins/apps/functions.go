@@ -1,11 +1,9 @@
 package apps
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/dokku/dokku/plugins/common"
@@ -18,8 +16,8 @@ func appExists(appName string) error {
 
 // checks if an app is locked
 func appIsLocked(appName string) bool {
-	lockfilePath := fmt.Sprintf("%v/.deploy.lock", common.AppRoot(appName))
-	_, err := os.Stat(lockfilePath)
+	lockPath := getLockPath(appName)
+	_, err := os.Stat(lockPath)
 	return !os.IsNotExist(err)
 }
 
@@ -40,11 +38,12 @@ func createApp(appName string) error {
 		return err
 	}
 
-	if err := common.PlugnTrigger("post-create", []string{appName}...); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "post-create",
+		Args:        []string{appName},
+		StreamStdio: true,
+	})
+	return err
 }
 
 // destroys an app
@@ -58,19 +57,41 @@ func destroyApp(appName string) error {
 	common.LogInfo1(fmt.Sprintf("Destroying %s (including all add-ons)", appName))
 
 	imageTag, _ := common.GetRunningImageTag(appName, "")
-	if err := common.PlugnTrigger("pre-delete", []string{appName, imageTag}...); err != nil {
+	_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "pre-delete",
+		Args:        []string{appName, imageTag},
+		StreamStdio: true,
+	})
+	if err != nil {
 		return err
 	}
 
 	scheduler := common.GetAppScheduler(appName)
 	removeContainers := "true"
-	if err := common.PlugnTrigger("scheduler-stop", []string{scheduler, appName, removeContainers}...); err != nil {
+	_, err = common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "scheduler-stop",
+		Args:        []string{scheduler, appName, removeContainers},
+		StreamStdio: true,
+	})
+	if err != nil {
 		return err
 	}
-	if err := common.PlugnTrigger("scheduler-post-delete", []string{scheduler, appName, imageTag}...); err != nil {
+
+	_, err = common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "scheduler-post-delete",
+		Args:        []string{scheduler, appName, imageTag},
+		StreamStdio: true,
+	})
+	if err != nil {
 		return err
 	}
-	if err := common.PlugnTrigger("post-delete", []string{appName, imageTag}...); err != nil {
+
+	_, err = common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "post-delete",
+		Args:        []string{appName, imageTag},
+		StreamStdio: true,
+	})
+	if err != nil {
 		return err
 	}
 
@@ -78,7 +99,12 @@ func destroyApp(appName string) error {
 	common.DockerCleanup(appName, forceCleanup)
 
 	common.LogInfo1("Retiring old containers and images")
-	if err := common.PlugnTrigger("scheduler-retire", []string{scheduler, appName}...); err != nil {
+	_, err = common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "scheduler-retire",
+		Args:        []string{scheduler, appName},
+		StreamStdio: true,
+	})
+	if err != nil {
 		return err
 	}
 
@@ -95,51 +121,9 @@ func destroyApp(appName string) error {
 	return nil
 }
 
-func listImagesByAppLabel(appName string) ([]string, error) {
-	command := []string{
-		common.DockerBin(),
-		"image",
-		"list",
-		"--quiet",
-		"--filter",
-		fmt.Sprintf("label=com.dokku.app-name=%v", appName),
-	}
-
-	var stderr bytes.Buffer
-	listCmd := common.NewShellCmd(strings.Join(command, " "))
-	listCmd.ShowOutput = false
-	listCmd.Command.Stderr = &stderr
-	b, err := listCmd.Output()
-
-	if err != nil {
-		return []string{}, errors.New(strings.TrimSpace(stderr.String()))
-	}
-
-	output := strings.Split(strings.TrimSpace(string(b[:])), "\n")
-	return output, nil
-}
-
-func listImagesByImageRepo(imageRepo string) ([]string, error) {
-	command := []string{
-		common.DockerBin(),
-		"image",
-		"list",
-		"--quiet",
-		imageRepo,
-	}
-
-	var stderr bytes.Buffer
-	listCmd := common.NewShellCmd(strings.Join(command, " "))
-	listCmd.ShowOutput = false
-	listCmd.Command.Stderr = &stderr
-	b, err := listCmd.Output()
-
-	if err != nil {
-		return []string{}, errors.New(strings.TrimSpace(stderr.String()))
-	}
-
-	output := strings.Split(strings.TrimSpace(string(b[:])), "\n")
-	return output, nil
+// returns the lock path
+func getLockPath(appName string) string {
+	return fmt.Sprintf("%v/.deploy.lock", common.GetAppDataDirectory("apps", appName))
 }
 
 // creates an app if allowed
@@ -148,8 +132,11 @@ func maybeCreateApp(appName string) error {
 		return nil
 	}
 
-	b, _ := common.PlugnTriggerOutput("config-get-global", []string{"DOKKU_DISABLE_APP_AUTOCREATION"}...)
-	disableAutocreate := strings.TrimSpace(string(b[:]))
+	results, _ := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "config-get-global",
+		Args:    []string{"DOKKU_DISABLE_APP_AUTOCREATION"},
+	})
+	disableAutocreate := results.StdoutContents()
 	if disableAutocreate == "true" {
 		common.LogWarn("App auto-creation disabled.")
 		return fmt.Errorf("Re-enable app auto-creation or create an app with 'dokku apps:create %s'", appName)

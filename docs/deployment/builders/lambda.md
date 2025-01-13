@@ -1,5 +1,6 @@
 # Lambda Builder
 
+> [!IMPORTANT]
 > New as of 0.28.0
 
 ```
@@ -41,11 +42,18 @@ The `lambda` builder plugin delegates all build logic to [lambda-builder](https:
 
 ### Changing the `lambda.yml` location
 
-When deploying a monorepo, it may be desirable to specify the specific path of the `lambda.yml` file to use for a given app. This can be done via the `builder-lambda:set` command. If a value is specified and that file does not exist in the app's build directory, then the build will fail.
+The `lambda.yml` is expected to be found in a specific directory, depending on the deploy approach:
+
+- The `WORKDIR` of the Docker image for deploys resulting from `git:from-image` and `git:load-image` commands.
+- The root of the source code tree for all other deploys (git push, `git:from-archive`, `git:sync`).
+
+Sometimes it may be desirable to set a different path for a given app, e.g. when deploying from a monorepo. This can be done via the `lambdayml-path` property:
 
 ```shell
-dokku builder-lambda:set node-js-app lambdayml-path lambda2.yml
+dokku builder-lambda:set node-js-app lambdayml-path .dokku/lambda.yml
 ```
+
+The value is the path to the desired file *relative* to the base search directory, and will never be treated as absolute paths in any context. If that file does not exist within the repository, the build will fail.
 
 The default value may be set by passing an empty value for the option:
 

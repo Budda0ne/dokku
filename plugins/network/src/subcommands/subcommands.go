@@ -36,12 +36,15 @@ func main() {
 		err = network.CommandExists(networkName)
 	case "info":
 		args := flag.NewFlagSet("network:info", flag.ExitOnError)
+		format := args.String("format", "text", "format: [ text | json ]")
 		args.Parse(os.Args[2:])
-		err = network.CommandInfo()
+		networkName := args.Arg(0)
+		err = network.CommandInfo(networkName, *format)
 	case "list":
 		args := flag.NewFlagSet("network:list", flag.ExitOnError)
+		format := args.String("format", "text", "format: [ text | json ]")
 		args.Parse(os.Args[2:])
-		err = network.CommandList()
+		err = network.CommandList(*format)
 	case "rebuild":
 		args := flag.NewFlagSet("network:rebuild", flag.ExitOnError)
 		args.Parse(os.Args[2:])
@@ -67,12 +70,14 @@ func main() {
 		appName := args.Arg(0)
 		property := args.Arg(1)
 		value := args.Arg(2)
+		values := common.VarArgs(args.Args(), 2)
 		if *global {
 			appName = "--global"
 			property = args.Arg(0)
 			value = args.Arg(1)
+			values = common.VarArgs(args.Args(), 1)
 		}
-		err = network.CommandSet(appName, property, value)
+		err = network.CommandSet(appName, property, value, values)
 	default:
 		err = fmt.Errorf("Invalid plugin subcommand call: %s", subcommand)
 	}

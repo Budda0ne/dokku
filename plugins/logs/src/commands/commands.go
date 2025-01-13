@@ -28,8 +28,7 @@ Additional commands:`
     logs:set [--global|<app>] <key> <value>, Set or clear a logs property for an app
     logs:vector-logs [--num num] [--tail], Display vector log output
     logs:vector-start, Start the vector logging container
-    logs:vector-stop, Stop the vector logging container
-`
+    logs:vector-stop, Stop the vector logging container`
 )
 
 func main() {
@@ -59,11 +58,11 @@ func main() {
 	case "logs:help":
 		usage()
 	case "help":
-		command := common.NewShellCmd(fmt.Sprintf("ps -o command= %d", os.Getppid()))
-		command.ShowOutput = false
-		output, err := command.Output()
-
-		if err == nil && strings.Contains(string(output), "--all") {
+		result, err := common.CallExecCommand(common.ExecCommandInput{
+			Command: "ps",
+			Args:    []string{"-o", "command=", strconv.Itoa(os.Getppid())},
+		})
+		if err == nil && strings.Contains(result.StdoutContents(), "--all") {
 			fmt.Println(helpContent)
 		} else {
 			fmt.Print("\n    logs, Manage log integration for an app\n")

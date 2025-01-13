@@ -1,7 +1,7 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-BOX_NAME = ENV["BOX_NAME"] || "bento/ubuntu-20.04"
+BOX_NAME = ENV["BOX_NAME"] || "bento/ubuntu-24.04"
 BOX_CPUS = ENV["BOX_CPUS"] || "1"
 BOX_MEMORY = ENV["BOX_MEMORY"] || "1024"
 DOKKU_DOMAIN = ENV["DOKKU_DOMAIN"] || "dokku.me"
@@ -9,7 +9,7 @@ DOKKU_IP = ENV["DOKKU_IP"] || "10.0.0.2"
 PREBUILT_STACK_URL = File.exist?("#{File.dirname(__FILE__)}/stack.tgz") ? 'file:///root/dokku/stack.tgz' : nil
 PUBLIC_KEY_PATH = "#{Dir.home}/.ssh/id_rsa.pub"
 
-make_cmd = "DEBIAN_FRONTEND=noninteractive make -e install"
+make_cmd = "TARGETARCH=$(dpkg --print-architecture) DEBIAN_FRONTEND=noninteractive make -e install"
 if PREBUILT_STACK_URL
   make_cmd = "PREBUILT_STACK_URL='#{PREBUILT_STACK_URL}' #{make_cmd}"
 end
@@ -39,9 +39,11 @@ Vagrant::configure("2") do |config|
   end
 
   config.vm.define "empty", autostart: false
+  config.vm.synced_folder ".", "/vagrant", type: "nfs", nfs_version: 4, nfs_udp: false
+
 
   config.vm.define "dokku", primary: true do |vm|
-    vm.vm.synced_folder File.dirname(__FILE__), "/root/dokku"
+    vm.vm.synced_folder File.dirname(__FILE__), "/root/dokku", type: "nfs", nfs_version: 4, nfs_udp: false
     vm.vm.hostname = "#{DOKKU_DOMAIN}"
     vm.vm.network :private_network, ip: DOKKU_IP
 
@@ -53,7 +55,7 @@ Vagrant::configure("2") do |config|
       vb.customize ["modifyvm", :id, "--cableconnected1", "on"]
     end
 
-    vm.vm.provision :shell, :inline => "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq >/dev/null && apt-get -qq -y --no-install-recommends install git build-essential >/dev/null && cd /root/dokku && #{make_cmd}"
+    vm.vm.provision :shell, :inline => "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq >/dev/null && apt-get -qq -y --no-install-recommends install git build-essential jq nginx >/dev/null && cd /root/dokku && #{make_cmd}"
     vm.vm.provision :shell do |s|
       s.inline = <<-EOT
         echo '"\e[5~": history-search-backward' > /root/.inputrc
@@ -72,19 +74,19 @@ Vagrant::configure("2") do |config|
   config.vm.define "dokku-windows", autostart: false do |vm|
     vm.vm.hostname = "#{DOKKU_DOMAIN}"
     vm.vm.network :private_network, ip: DOKKU_IP
-    vm.vm.provision :shell, :inline => "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq >/dev/null && apt-get -qq -y --no-install-recommends install git dos2unix >/dev/null"
+    vm.vm.provision :shell, :inline => "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq >/dev/null && apt-get -qq -y --no-install-recommends install git dos2unix nginx >/dev/null"
     vm.vm.provision :shell, :inline => "cd /vagrant/ && export DOKKU_BRANCH=`git symbolic-ref -q --short HEAD 2>/dev/null` && export DOKKU_TAG=`git describe --tags --exact-match 2>/dev/null` && cd /root/ && cp /vagrant/bootstrap.sh ./ && dos2unix bootstrap.sh && bash bootstrap.sh"
   end
 
   config.vm.define "dokku-deb", autostart: false do |vm|
-    vm.vm.synced_folder File.dirname(__FILE__), "/root/dokku"
+    vm.vm.synced_folder File.dirname(__FILE__), "/root/dokku", type: "nfs", nfs_version: 4, nfs_udp: false
     vm.vm.hostname = "#{DOKKU_DOMAIN}"
     vm.vm.network :private_network, ip: DOKKU_IP
     vm.vm.provision :shell, :inline => "cd /root/dokku && make install-from-deb"
   end
 
   config.vm.define "build", autostart: false do |vm|
-    vm.vm.synced_folder File.dirname(__FILE__), "/root/dokku"
+    vm.vm.synced_folder File.dirname(__FILE__), "/root/dokku", type: "nfs", nfs_version: 4, nfs_udp: false
     vm.vm.hostname = "#{DOKKU_DOMAIN}"
     vm.vm.network :private_network, ip: DOKKU_IP
     vm.vm.provision :shell, :inline => "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq >/dev/null && apt-get -qq -y --no-install-recommends install git >/dev/null && cd /root/dokku && #{make_cmd}"
@@ -93,9 +95,9 @@ Vagrant::configure("2") do |config|
 
   config.vm.define "build-arch", autostart: false do |vm|
     vm.vm.box = "bugyt/archlinux"
-    vm.vm.synced_folder File.dirname(__FILE__), "/dokku"
+    vm.vm.synced_folder File.dirname(__FILE__), "/dokku", type: "nfs", nfs_version: 4, nfs_udp: false
     if Pathname.new("#{File.dirname(__FILE__)}/../dokku-arch").exist?
-      vm.vm.synced_folder "#{File.dirname(__FILE__)}/../dokku-arch", "/dokku-arch"
+      vm.vm.synced_folder "#{File.dirname(__FILE__)}/../dokku-arch", "/dokku-arch", type: "nfs", nfs_version: 4, nfs_udp: false
     end
     vm.vm.hostname = "#{DOKKU_DOMAIN}"
     vm.vm.network :private_network, ip: DOKKU_IP

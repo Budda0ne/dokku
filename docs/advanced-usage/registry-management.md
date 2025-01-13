@@ -1,5 +1,6 @@
 # Registry Management
 
+> [!IMPORTANT]
 > New as of 0.25.0
 
 ```
@@ -98,8 +99,18 @@ Setting the property value to an empty string will reset the value to the system
 
 ```shell
 # per-app
-dokku registry:set node-js-app push-on-release
+dokku registry:set node-js-app image-repo
 ```
+
+### Templating the image repository name
+
+Instead of setting the image repository name on a per-app basis, it can be set via a template globally with the `image-repo-template` property:
+
+```shell
+dokku registry:set --global image-repo-template "my-awesome-prefix/{{ .AppName }}"
+```
+
+Dokku uses a Golang template and has access to the `AppName` variable as shown above.
 
 ### Pushing images on build
 
@@ -123,4 +134,35 @@ dokku registry:set node-js-app push-on-release
 
 # globally
 dokku registry:set --global push-on-release
+```
+
+### Push extra tags 
+
+To push the image on release with extra tags, set the `push-extra-tags` to a comma-separated list of tags via the `registry:set` command. The default value for this property is empty. Setting the property will result in the image being tagged with extra tags every release.
+
+```shell
+# multiple-tags
+dokku registry:set node-js-app push-extra-tags foo,bar
+```
+The `push-extra-tags` can be set to a single tag too.
+
+```shell
+# single tag
+dokku registry:set node-js-app push-extra-tags foo
+```
+
+This property can be set for a single app or globally via the `--global` flag. When set globally, the app-specific value will always overide the global value. The default global value for this property is `false`.
+
+```shell
+dokku registry:set --global push-extra-tags foo,bar
+```
+
+Setting the property value to an empty string will reset the value to the system default. Resetting the value can be done per app or globally.
+
+```shell
+# per-app
+dokku registry:set node-js-app push-extra-tags
+
+# globally
+dokku registry:set --global push-extra-tags
 ```

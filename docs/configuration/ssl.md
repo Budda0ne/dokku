@@ -1,5 +1,6 @@
 # SSL Configuration
 
+> [!IMPORTANT]
 > New as of 0.4.0
 
 Dokku supports SSL/TLS certificate inspection and CSR/Self-signed certificate generation via the `certs` plugin. Note that whenever SSL/TLS support is enabled SPDY is also enabled.
@@ -33,7 +34,8 @@ tar cvf cert-key.tar server.crt server.key
 dokku certs:add node-js-app < cert-key.tar
 ```
 
-> Note: If your `.crt` file came alongside a `.ca-bundle`, you'll want to concatenate those into a single `.crt` file before adding it to the `.tar`.
+> [!NOTE]
+> If your `.crt` file came alongside a `.ca-bundle`, you'll want to concatenate those into a single `.crt` file before adding it to the `.tar`.
 
 ```shell
 cat yourdomain_com.crt yourdomain_com.ca-bundle > server.crt
@@ -47,7 +49,8 @@ Note that with the default nginx template, requests will be redirected to the `h
 
 ### Certificate generation
 
-> Note: Using this method will create a self-signed certificate, which is only recommended for development or staging use, not production environments.
+> [!NOTE]
+> Using this method will create a self-signed certificate, which is only recommended for development or staging use, not production environments.
 
 The `certs:generate` command will walk you through the correct `openssl` commands to create a key, csr and a self-signed cert for a given app/domain. We automatically put the self-signed cert in place as well as add the specified domain to the application configuration.
 
@@ -69,6 +72,7 @@ dokku certs:show node-js-app key > server.key
 
 ### Displaying certificate reports for an app
 
+> [!IMPORTANT]
 > New as of 0.8.1
 
 You can get a report about the apps ssl status using the `certs:report` command:
@@ -124,7 +128,7 @@ dokku certs:report node-js-app --ssl-enabled
 
 ## HSTS Header
 
-The [HSTS header](https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security) is an HTTP header that can inform browsers that all requests to a given site should be made via HTTPS. Dokku does enables this header by default for HTTPS requests.
+The [HSTS header](https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security) is an HTTP header that can inform browsers that all requests to a given site should be made via HTTPS. Dokku enables this header by default for HTTPS requests.
 
 See the [NGINX HSTS documentation](/docs/networking/proxies/nginx.md#hsts-header) for more information on how the HSTS configuration can be managed for your application.
 
@@ -132,37 +136,12 @@ See the [NGINX HSTS documentation](/docs/networking/proxies/nginx.md#hsts-header
 
 Certain versions of nginx have bugs that prevent [HTTP/2](https://nginx.org/en/docs/http/ngx_http_v2_module.html) from properly responding to all clients, thus causing applications to be unavailable. For HTTP/2 to be enabled in your applications' nginx configs, you need to have installed nginx 1.11.5 or higher. See [issue 2435](https://github.com/dokku/dokku/issues/2435) for more details.
 
-## Running behind a load balancer
-
-Your application has access to the HTTP headers `X-Forwarded-Proto`, `X-Forwarded-Port` and `X-Forwarded-For`. These headers indicate the protocol of the original request (HTTP or HTTPS), the port number, and the IP address of the client making the request, respectively. The default configuration is for Nginx to set these headers.
-
-If your server runs behind an HTTP(S) load balancer, then Nginx will see all requests as coming from the load balancer. If your load balancer sets the `X-Forwarded-` headers, you can tell Nginx to pass these headers from load balancer to your application via `nginx:set`:
-
-```shell
-dokku nginx:set node-js-app x-forwarded-for-value "\$http_x_forwarded_for"
-dokku nginx:set node-js-app x-forwarded-port-value "\$http_x_forwarded_port"
-dokku nginx:set node-js-app x-forwarded-proto-value "\$http_x_forwarded_proto"
-```
-
-Only use this option if:
-1. All requests are terminated at the load balancer, and forwarded to Nginx
-2. The load balancer is configured to send the `X-Forwarded-` headers (this may be off by default)
-
-If it's possible to make HTTP(S) requests directly to Nginx, bypassing the load balancer, or if the load balancer is not configured to set these headers, then it becomes possible for a client to set these headers to arbitrary values.
-
-The `x-forwarded-ssl` property may also be set for application frameworks that require this value. Note that this is a non-standard version of setting `x-forwarded-proto` to `https`, and should only be done as a last resort.
-
-```shell
-# force-setting value to `on`
-dokku nginx:set node-js-app x-forwarded-ssl on
-
-# force-setting value to `off`
-dokku nginx:set node-js-app x-forwarded-ssl on
-
-# removing the value from nginx.conf (default)
-dokku nginx:set node-js-app x-forwarded-ssl
-```
-
 ### SSL Port Exposure
 
-When your app is served from port `80` then the `/home/dokku/APP/nginx.conf` file will automatically be updated to instruct nginx to respond to ssl on port 443 as a new cert is added.  If your app uses a non-standard port (perhaps you have a dockerfile deploy exposing port `99999`) you may need to manually expose an ssl port via `dokku proxy:ports-add <APP> https:443:99999`.
+When your app is served from port `80` then the `/home/dokku/APP/nginx.conf` file will automatically be updated to instruct nginx to respond to ssl on port 443 as a new cert is added. If your app uses a non-standard port (perhaps you have a dockerfile deploy exposing port `99999`) you may need to manually expose an ssl port via `dokku ports:add <APP> https:443:99999`.
+
+## Other
+
+### Running behind a proxy (`X-Forwarded-Ssl`, etc.)
+
+See the [running behind another proxy documentation](/docs/networking/proxies/nginx.md#running-behind-another-proxy--configuring-x-forwarded--headers) for more information on how to configure your Nginx config when your server is running behind a proxy (e.g. load balancer, etc.).

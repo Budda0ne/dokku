@@ -38,8 +38,8 @@ teardown() {
   assert_success
 
   # the run command is equivalent to the following line, except with backslashes due to the enclosing doublequotes
-  # dokku docker-options:add test deploy '--label "some.key=Host(\`$TEST_APP.dokku.me\`)"'
-  run /bin/bash -c "dokku docker-options:add $TEST_APP deploy '--label \"some.key=Host(\\\`$TEST_APP.dokku.me\\\`)\"'"
+  # dokku docker-options:add test deploy '--label "some.key=Host(\`$TEST_APP.$DOKKU_DOMAIN\`)"'
+  run /bin/bash -c "dokku docker-options:add $TEST_APP deploy '--label \"some.key=Host(\\\`$TEST_APP.$DOKKU_DOMAIN\\\`)\"'"
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -52,8 +52,26 @@ teardown() {
   run /bin/bash -c "docker inspect --format '{{ index .Config.Labels \"some.key\"}}' $TEST_APP.web.1"
   echo "output: $output"
   echo "status: $status"
-  assert_output "Host(\`$TEST_APP.dokku.me\`)"
+  assert_output "Host(\`$TEST_APP.$DOKKU_DOMAIN\`)"
   assert_success
+}
+
+@test "(scheduler-docker-local) no-web" {
+  run create_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku ps:set $TEST_APP procfile-path worker.Procfile"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Skipping web as it is missing from the current Procfile"
 }
 
 @test "(scheduler-docker-local) init-process" {
@@ -100,4 +118,60 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output_contains "docker-init" 0
+}
+
+@test "(scheduler-docker-local) publish ports" {
+  run create_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Deploys may fail when publishing ports and scaling to multiple containers" 0
+  assert_output_contains "Deploys may fail when publishing ports and enabling zero downtime" 0
+
+  run /bin/bash -c "dokku docker-options:add $TEST_APP deploy '--publish 5000:5000'"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku ps:scale --skip-deploy $TEST_APP web=2"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  # the expected output will be seen twice due to how parallel re-outputs stderr in its own output...
+  run /bin/bash -c "dokku ps:rebuild $TEST_APP"
+  echo "output: $output"
+  echo "status: $status"
+  assert_failure
+  assert_output_contains "Deploys may fail when publishing ports and scaling to multiple containers" 2
+  assert_output_contains "Deploys may fail when publishing ports and enabling zero downtime" 0
+
+  run /bin/bash -c "dokku ps:scale --skip-deploy $TEST_APP web=1"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku ps:rebuild $TEST_APP"
+  echo "output: $output"
+  echo "status: $status"
+  assert_failure
+  assert_output_contains "Deploys may fail when publishing ports and scaling to multiple containers" 0
+  assert_output_contains "Deploys may fail when publishing ports and enabling zero downtime" 2
+
+  run /bin/bash -c "dokku checks:disable $TEST_APP"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku ps:rebuild $TEST_APP"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Deploys may fail when publishing ports and scaling to multiple containers" 0
+  assert_output_contains "Deploys may fail when publishing ports and enabling zero downtime" 0
 }

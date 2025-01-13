@@ -2,10 +2,6 @@
 
 load test_helper
 
-setup_file() {
-  install_pack
-}
-
 setup() {
   create_app
 }
@@ -25,7 +21,7 @@ teardown() {
   echo "status: $status"
   assert_success
 
-  run deploy_app lambda-python dokku@dokku.me:$TEST_APP inject_lambda_yml
+  run deploy_app lambda-python dokku@$DOKKU_DOMAIN:$TEST_APP inject_lambda_yml
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -112,12 +108,13 @@ teardown() {
   echo "status: $status"
   assert_success
 
+  # cache will be used
   run /bin/bash -c "dokku ps:rebuild $TEST_APP"
   echo "output: $output"
   echo "status: $status"
   assert_success
   assert_output_contains 'Building app with image mlupin/docker-lambda:python3.9-build'
-  assert_output_contains 'Installing dependencies via pip'
+  assert_output_contains 'Installing dependencies via pip' 0
 
   run /bin/bash -c "dokku logs $TEST_APP"
   echo "output: $output"

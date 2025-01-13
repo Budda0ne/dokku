@@ -1,7 +1,6 @@
 package ps
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/dokku/dokku/plugins/common"
 	dockeroptions "github.com/dokku/dokku/plugins/docker-options"
-	"github.com/ryanuber/columnize"
 )
 
 func canScaleApp(appName string) bool {
@@ -20,49 +18,23 @@ func canScaleApp(appName string) bool {
 	return common.ToBool(canScale)
 }
 
-func getProcessStatus(appName string) map[string]string {
-	statuses := make(map[string]string)
-	containerFiles := common.ListFilesWithPrefix(common.AppRoot(appName), "CONTAINER.")
-	for _, filename := range containerFiles {
-		containerID := common.ReadFirstLine(filename)
-		containerStatus, _ := common.DockerInspect(containerID, "{{ .State.Status }}")
-		process := strings.TrimPrefix(filename, fmt.Sprintf("%s/CONTAINER.", common.AppRoot(appName)))
-
-		if containerStatus == "" {
-			containerStatus = "missing"
-		}
-
-		statuses[process] = fmt.Sprintf("%s (CID: %s)", containerStatus, containerID[0:11])
-	}
-
-	return statuses
-}
-
 func getProcfileCommand(procfilePath string, processType string, port int) (string, error) {
 	if !common.FileExists(procfilePath) {
 		return "", errors.New("No procfile found")
 	}
 
-	shellCmd := common.NewShellCmd(strings.Join([]string{
-		"procfile-util",
-		"show",
-		"--procfile",
-		procfilePath,
-		"--process-type",
-		processType,
-		"--default-port",
-		strconv.Itoa(port),
-	}, " "))
-	var stderr bytes.Buffer
-	shellCmd.ShowOutput = false
-	shellCmd.Command.Stderr = &stderr
-	b, err := shellCmd.Output()
-
+	result, err := common.CallExecCommand(common.ExecCommandInput{
+		Command: "procfile-util",
+		Args:    []string{"show", "--procfile", procfilePath, "--process-type", processType, "--default-port", strconv.Itoa(port)},
+	})
 	if err != nil {
-		return "", fmt.Errorf(strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("Error running procfile-util: %s", err)
+	}
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("Error running procfile-util: %s", result.StderrContents())
 	}
 
-	return strings.TrimSpace(string(b[:])), nil
+	return result.StdoutContents(), nil
 }
 
 func getProcfilePath(appName string) string {
@@ -97,15 +69,21 @@ func getRestartPolicy(appName string) (string, error) {
 
 func getProcessCount(appName string) (int, error) {
 	scheduler := common.GetAppScheduler(appName)
-	b, _ := common.PlugnTriggerOutput("scheduler-app-status", []string{scheduler, appName}...)
-	count := strings.Split(strings.TrimSpace(string(b[:])), " ")[0]
+	results, _ := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "scheduler-app-status",
+		Args:    []string{scheduler, appName},
+	})
+	count := strings.Split(results.StdoutContents(), " ")[0]
 	return strconv.Atoi(count)
 }
 
 func getRunningState(appName string) string {
 	scheduler := common.GetAppScheduler(appName)
-	b, _ := common.PlugnTriggerOutput("scheduler-app-status", []string{scheduler, appName}...)
-	return strings.Split(strings.TrimSpace(string(b[:])), " ")[1]
+	results, _ := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger: "scheduler-app-status",
+		Args:    []string{scheduler, appName},
+	})
+	return strings.Split(results.StdoutContents(), " ")[1]
 }
 
 func hasProcfile(appName string) bool {
@@ -143,18 +121,24 @@ func isValidRestartPolicy(policy string) bool {
 func parseProcessTuples(processTuples []string) (FormationSlice, error) {
 	formations := FormationSlice{}
 
+	foundFormations := map[string]bool{}
 	for _, processTuple := range processTuples {
-		s := strings.Split(processTuple, "=")
+		s := strings.SplitN(processTuple, "=", 2)
 		if len(s) == 1 {
 			return formations, fmt.Errorf("Missing count for process type %s", processTuple)
 		}
 
-		processType := s[0]
-		quantity, err := strconv.Atoi(s[1])
+		processType := strings.TrimSpace(s[0])
+		quantity, err := strconv.Atoi(strings.TrimSpace(s[1]))
 		if err != nil {
 			return formations, fmt.Errorf("Invalid count for process type %s", s[0])
 		}
 
+		if foundFormations[processType] {
+			continue
+		}
+
+		foundFormations[processType] = true
 		formations = append(formations, &Formation{
 			ProcessType: processType,
 			Quantity:    quantity,
@@ -167,22 +151,18 @@ func parseProcessTuples(processTuples []string) (FormationSlice, error) {
 func processesInProcfile(procfilePath string) (map[string]bool, error) {
 	processes := map[string]bool{}
 
-	shellCmd := common.NewShellCmd(strings.Join([]string{
-		"procfile-util",
-		"list",
-		"--procfile",
-		procfilePath,
-	}, " "))
-	var stderr bytes.Buffer
-	shellCmd.ShowOutput = false
-	shellCmd.Command.Stderr = &stderr
-	b, err := shellCmd.Output()
-
+	result, err := common.CallExecCommand(common.ExecCommandInput{
+		Command: "procfile-util",
+		Args:    []string{"list", "--procfile", procfilePath},
+	})
 	if err != nil {
-		return processes, fmt.Errorf(strings.TrimSpace(stderr.String()))
+		return processes, fmt.Errorf("Error listing processes: %s", err)
+	}
+	if result.ExitCode != 0 {
+		return processes, fmt.Errorf("Error listing processes: %s", result.StderrContents())
 	}
 
-	for _, s := range strings.Split(strings.TrimSpace(string(b[:])), "\n") {
+	for _, s := range strings.Split(result.StdoutContents(), "\n") {
 		processes[s] = true
 	}
 
@@ -211,11 +191,31 @@ func getFormations(appName string) (FormationSlice, error) {
 		return formations, err
 	}
 
-	return append(formations, oldFormations...), nil
+	foundProcessTypes := map[string]bool{}
+	for _, formation := range formations {
+		foundProcessTypes[formation.ProcessType] = true
+	}
+
+	for _, formation := range oldFormations {
+		if foundProcessTypes[formation.ProcessType] {
+			continue
+		}
+
+		foundProcessTypes[formation.ProcessType] = true
+		formations = append(formations, formation)
+	}
+
+	sort.Sort(formations)
+	return formations, nil
 }
 
 func restorePrep() error {
-	if err := common.PlugnTrigger("proxy-clear-config", []string{"--all"}...); err != nil {
+	_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "proxy-clear-config",
+		Args:        []string{"--all"},
+		StreamStdio: true,
+	})
+	if err != nil {
 		return fmt.Errorf("Error clearing proxy config: %s", err)
 	}
 
@@ -229,18 +229,12 @@ func scaleReport(appName string) error {
 	}
 
 	common.LogInfo1Quiet(fmt.Sprintf("Scaling for %s", appName))
-	config := columnize.DefaultConfig()
-	config.Delim = "="
-	config.Glue = ": "
-	config.Prefix = "    "
-	config.Empty = ""
 
 	content := []string{}
 	if os.Getenv("DOKKU_QUIET_OUTPUT") == "" {
 		content = append(content, "proctype=qty", "--------=---")
 	}
 
-	sort.Sort(formations)
 	for _, formation := range formations {
 		content = append(content, fmt.Sprintf("%s=%d", formation.ProcessType, formation.Quantity))
 	}
@@ -277,7 +271,12 @@ func scaleSet(appName string, skipDeploy bool, clearExisting bool, processTuples
 	}
 
 	for _, formation := range formations {
-		if err := common.PlugnTrigger("deploy", []string{appName, imageTag, formation.ProcessType}...); err != nil {
+		_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+			Trigger:     "deploy",
+			Args:        []string{appName, imageTag, formation.ProcessType},
+			StreamStdio: true,
+		})
+		if err != nil {
 			return err
 		}
 	}

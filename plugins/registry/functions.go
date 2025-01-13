@@ -1,15 +1,39 @@
 package registry
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
+	"text/template"
 
-	"github.com/codeskyblue/go-sh"
 	"github.com/dokku/dokku/plugins/common"
 )
+
+func getImageRepoFromTemplate(appName string) (string, error) {
+	imageRepoTemplate := common.PropertyGet("registry", "--global", "image-repo-template")
+	if imageRepoTemplate == "" {
+		return "", nil
+	}
+
+	tmpl, err := template.New("template").Parse(imageRepoTemplate)
+	if err != nil {
+		return "", fmt.Errorf("Unable to parse image-repo-template: %w", err)
+	}
+
+	type templateData struct {
+		AppName string
+	}
+	data := templateData{AppName: appName}
+
+	var doc bytes.Buffer
+	if err := tmpl.Execute(&doc, data); err != nil {
+		return "", fmt.Errorf("Unable to execute image-repo-template: %w", err)
+	}
+
+	return strings.TrimSpace(doc.String()), nil
+}
 
 func getRegistryServerForApp(appName string) string {
 	value := common.PropertyGet("registry", appName, "server")
@@ -55,6 +79,14 @@ func incrementTagVersion(appName string) (int, error) {
 	return version, nil
 }
 
+func getRegistryPushExtraTagsForApp(appName string) string {
+	value := common.PropertyGet("registry", appName, "push-extra-tags")
+	if value == "" {
+		value = common.PropertyGet("registry", "--global", "push-extra-tags")
+	}
+	return value
+}
+
 func pushToRegistry(appName string, tag int, imageID string, imageRepo string) error {
 	common.LogVerboseQuiet("Retrieving image info for app")
 
@@ -74,9 +106,27 @@ func pushToRegistry(appName string, tag int, imageID string, imageRepo string) e
 		return errors.New("Unable to tag image")
 	}
 
-	// For the future, we should also add the ability to create the remote repository
-	// This is only really important for registries that do not support creation on push
-	// Examples include AWS and Quay.io
+	extraTags := getRegistryPushExtraTagsForApp(appName)
+	if extraTags != "" {
+		extraTagsArray := strings.Split(extraTags, ",")
+		for _, extraTag := range extraTagsArray {
+			extraTagImage := fmt.Sprintf("%s%s:%s", registryServer, imageRepo, extraTag)
+			common.LogVerboseQuiet(fmt.Sprintf("Tagging %s as %s in registry format", imageRepo, extraTag))
+			if !dockerTag(imageID, extraTagImage) {
+				return errors.New(fmt.Sprintf("Unable to tag image as %s", extraTag))
+			}
+			defer func() {
+				common.LogVerboseQuiet(fmt.Sprintf("Untagging extra tag %s", extraTag))
+				if err := common.RemoveImages([]string{extraTagImage}); err != nil {
+					common.LogWarn(fmt.Sprintf("Unable to untag extra tag %s", extraTag, err.Error()))
+				}
+			}()
+			common.LogVerboseQuiet(fmt.Sprintf("Pushing %s", extraTagImage))
+			if !dockerPush(extraTagImage) {
+				return errors.New(fmt.Sprintf("Unable to push image with %s tag", extraTag))
+			}
+		}
+	}
 
 	common.LogVerboseQuiet(fmt.Sprintf("Pushing %s", fullImage))
 	if !dockerPush(fullImage) {
@@ -99,25 +149,21 @@ func pushToRegistry(appName string, tag int, imageID string, imageRepo string) e
 }
 
 func dockerTag(imageID string, imageTag string) bool {
-	cmd := sh.Command(common.DockerBin(), "image", "tag", imageID, imageTag)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-
-	return true
+	result, err := common.CallExecCommand(common.ExecCommandInput{
+		Command:     common.DockerBin(),
+		Args:        []string{"image", "tag", imageID, imageTag},
+		StreamStdio: true,
+	})
+	return err == nil && result.ExitCode == 0
 }
 
 func dockerPush(imageTag string) bool {
-	cmd := sh.Command(common.DockerBin(), "image", "push", imageTag)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-
-	return true
+	result, err := common.CallExecCommand(common.ExecCommandInput{
+		Command:     common.DockerBin(),
+		Args:        []string{"image", "push", imageTag},
+		StreamStdio: true,
+	})
+	return err == nil && result.ExitCode == 0
 }
 
 func imageCleanup(appName string, imageRepo string, imageTag string, tag int) {

@@ -3,6 +3,7 @@
 load test_helper
 
 setup() {
+  rm "${BATS_PARENT_TMPNAME}.skip" || true
   global_setup
 }
 
@@ -53,7 +54,7 @@ teardown() {
   echo "status: $status"
   assert_failure
   assert_output_contains "$TEST_APP logs information" 0
-  assert_output_contains "Invalid flag passed, valid flags: --logs-computed-max-size, --logs-global-max-size, --logs-global-vector-sink, --logs-max-size, --logs-vector-sink"
+  assert_output_contains "Invalid flag passed, valid flags: --logs-app-label-alias, --logs-computed-app-label-alias, --logs-computed-max-size, --logs-global-app-label-alias, --logs-global-max-size, --logs-global-vector-sink, --logs-max-size, --logs-vector-global-image, --logs-vector-sink"
 
   run /bin/bash -c "dokku logs:report $TEST_APP --logs-vector-sink 2>&1"
   echo "output: $output"
@@ -98,13 +99,13 @@ teardown() {
   echo "output: $output"
   echo "status: $status"
   assert_failure
-  assert_output_contains "Invalid property specified, valid properties include: max-size, vector-sink"
+  assert_output_contains "Invalid property specified, valid properties include: app-label-alias, max-size, vector-image, vector-sink"
 
   run /bin/bash -c "dokku logs:set $TEST_APP invalid value" 2>&1
   echo "output: $output"
   echo "status: $status"
   assert_failure
-  assert_output_contains "Invalid property specified, valid properties include: max-size, vector-sink"
+  assert_output_contains "Invalid property specified, valid properties include: app-label-alias, max-size, vector-image, vector-sink"
 }
 
 @test "(logs) logs:set app" {
@@ -181,7 +182,7 @@ teardown() {
   echo "output: $output"
   echo "status: $status"
   assert_success
-  assert_output ""
+  assert_output_not_exists
 
   run /bin/bash -c "dokku logs:report $TEST_APP --logs-max-size 2>&1"
   echo "output: $output"
@@ -235,7 +236,7 @@ teardown() {
   echo "output: $output"
   echo "status: $status"
   assert_success
-  assert_output ""
+  assert_output_not_exists
 }
 
 @test "(logs) logs:set escaped uri" {
@@ -281,7 +282,6 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output "2932JSDJ+KSDSDJ"
-
 }
 
 @test "(logs) logs:set global" {
@@ -415,7 +415,75 @@ teardown() {
   assert_output "10m"
 }
 
-@test "(logs) logs:set max-size with alternate log-driver daemon " {
+@test "(logs) logs:set app-label-alias" {
+  run create_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku logs:set $TEST_APP vector-sink console://?encoding[codec]=json" 2>&1
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Setting vector-sink"
+  assert_output_contains "Writing updated vector config to /var/lib/dokku/data/logs/vector.json"
+
+  run /bin/bash -c "dokku logs:set --global app-label-alias" 2>&1
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Unsetting app-label-alias"
+  assert_output_contains "Writing updated vector config to /var/lib/dokku/data/logs/vector.json"
+
+  run /bin/bash -c "jq -r '.sources[\"docker-source:$TEST_APP\"].include_labels[0]' /var/lib/dokku/data/logs/vector.json"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output "com.dokku.app-name=$TEST_APP"
+
+  run /bin/bash -c "dokku logs:set --global app-label-alias global-alt-name" 2>&1
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Writing updated vector config to /var/lib/dokku/data/logs/vector.json"
+
+  run /bin/bash -c "dokku logs:report $TEST_APP --logs-computed-app-label-alias" 2>&1
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "global-alt-name"
+
+  run /bin/bash -c "cat /var/lib/dokku/data/logs/vector.json"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "jq -r '.sources[\"docker-source:$TEST_APP\"].include_labels[0]' /var/lib/dokku/data/logs/vector.json"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output "global-alt-name=$TEST_APP"
+
+  run /bin/bash -c "dokku logs:set --global app-label-alias alt-name" 2>&1
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Writing updated vector config to /var/lib/dokku/data/logs/vector.json"
+
+  run /bin/bash -c "dokku logs:report $TEST_APP --logs-computed-app-label-alias" 2>&1
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "alt-name"
+
+  run /bin/bash -c "jq -r '.sources[\"docker-source:$TEST_APP\"].include_labels[0]' /var/lib/dokku/data/logs/vector.json"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output "alt-name=$TEST_APP"
+}
+
+@test "(logs) logs:set max-size with alternate log-driver daemon" {
   if [[ "$REMOTE_CONTAINERS" == "true" ]]; then
     skip "skipping due non-existent docker service in remote dev container"
   fi
@@ -425,7 +493,7 @@ teardown() {
   fi
 
   driver="$(jq -r '."log-driver"' /etc/docker/daemon.json)"
-  local TMP_FILE=$(mktemp "/tmp/dokku.me.XXXX")
+  local TMP_FILE=$(mktemp "/tmp/${DOKKU_DOMAIN}.XXXX")
 
   run create_app
   echo "output: $output"
@@ -532,7 +600,7 @@ teardown() {
   echo "output: $output"
   echo "status: $status"
   assert_success
-  assert_output ""
+  assert_output_not_exists
 }
 
 @test "(logs) logs:vector" {
@@ -553,7 +621,7 @@ teardown() {
   assert_success
   assert_output_contains "Vector container is running"
 
-  run /bin/bash -c "sudo docker inspect --format='{{.HostConfig.RestartPolicy.Name}}' vector"
+  run /bin/bash -c "sudo docker inspect --format='{{.HostConfig.RestartPolicy.Name}}' vector-vector-1"
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -586,7 +654,7 @@ teardown() {
   assert_output_contains "vector:" 5
   assert_line_count 6
 
-  run /bin/bash -c "docker stop vector"
+  run /bin/bash -c "docker stop vector-vector-1"
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -602,5 +670,5 @@ teardown() {
   echo "output: $output"
   echo "status: $status"
   assert_success
-  assert_output_contains "Stopping and removing vector container"
+  assert_output_contains "Stopping and removing vector container"
 }

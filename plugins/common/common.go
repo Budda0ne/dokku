@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -124,8 +124,11 @@ func GetAppScheduler(appName string) string {
 }
 
 func getAppScheduler(appName string) string {
-	b, _ := PlugnTriggerOutput("scheduler-detect", []string{appName}...)
-	value := strings.TrimSpace(string(b[:]))
+	results, _ := CallPlugnTrigger(PlugnTriggerInput{
+		Trigger: "scheduler-detect",
+		Args:    []string{appName},
+	})
+	value := results.StdoutContents()
 	if value != "" {
 		return value
 	}
@@ -134,8 +137,11 @@ func getAppScheduler(appName string) string {
 
 // GetGlobalScheduler fetchs the global scheduler
 func GetGlobalScheduler() string {
-	b, _ := PlugnTriggerOutput("scheduler-detect", []string{"--global"}...)
-	value := strings.TrimSpace(string(b[:]))
+	results, _ := CallPlugnTrigger(PlugnTriggerInput{
+		Trigger: "scheduler-detect",
+		Args:    []string{"--global"},
+	})
+	value := results.StdoutContents()
 	if value != "" {
 		return value
 	}
@@ -152,24 +158,34 @@ func GetDeployingAppImageName(appName, imageTag, imageRepo string) (string, erro
 	ctx := context.Background()
 	errs, ctx := errgroup.WithContext(ctx)
 	errs.Go(func() error {
-		b, err := PlugnTriggerOutput("deployed-app-repository", []string{appName}...)
+		results, err := CallPlugnTrigger(PlugnTriggerInput{
+			Trigger: "deployed-app-repository",
+			Args:    []string{appName},
+		})
 		if err == nil {
-			imageRemoteRepository = strings.TrimSpace(string(b[:]))
+			imageRemoteRepository = results.StdoutContents()
 		}
 		return err
 	})
 	errs.Go(func() error {
-		b, err := PlugnTriggerOutput("deployed-app-image-tag", []string{appName}...)
+		results, err := CallPlugnTrigger(PlugnTriggerInput{
+			Trigger: "deployed-app-image-tag",
+			Args:    []string{appName},
+		})
+
 		if err == nil {
-			newImageTag = strings.TrimSpace(string(b[:]))
+			newImageTag = results.StdoutContents()
 		}
 		return err
 	})
 
 	errs.Go(func() error {
-		b, err := PlugnTriggerOutput("deployed-app-image-repo", []string{appName}...)
+		results, err := CallPlugnTrigger(PlugnTriggerInput{
+			Trigger: "deployed-app-image-repo",
+			Args:    []string{appName},
+		})
 		if err == nil {
-			newImageRepo = strings.TrimSpace(string(b[:]))
+			newImageRepo = results.StdoutContents()
 		}
 		return err
 	})
@@ -251,11 +267,14 @@ func GetAppRunningContainerIDs(appName string, containerType string) ([]string, 
 
 // GetRunningImageTag retrieves current deployed image tag for a given app
 func GetRunningImageTag(appName string, imageTag string) (string, error) {
-	b, err := PlugnTriggerOutput("deployed-app-image-tag", []string{appName}...)
+	results, err := CallPlugnTrigger(PlugnTriggerInput{
+		Trigger: "deployed-app-image-tag",
+		Args:    []string{appName},
+	})
 	if err != nil {
 		return imageTag, err
 	}
-	newImageTag := strings.TrimSpace(string(b[:]))
+	newImageTag := results.StdoutContents()
 	if newImageTag != "" {
 		imageTag = newImageTag
 	}
@@ -264,6 +283,41 @@ func GetRunningImageTag(appName string, imageTag string) (string, error) {
 	}
 
 	return imageTag, nil
+}
+
+// GetDokkuAppShell returns the shell for a given app
+func GetDokkuAppShell(appName string) string {
+	shell := "/bin/bash"
+	globalShell := ""
+	appShell := ""
+
+	ctx := context.Background()
+	errs, ctx := errgroup.WithContext(ctx)
+	errs.Go(func() error {
+		results, _ := CallPlugnTriggerWithContext(ctx, PlugnTriggerInput{
+			Trigger: "config-get-global",
+			Args:    []string{"DOKKU_APP_SHELL"},
+		})
+		globalShell = results.StdoutContents()
+		return nil
+	})
+	errs.Go(func() error {
+		results, _ := CallPlugnTriggerWithContext(ctx, PlugnTriggerInput{
+			Trigger: "config-get",
+			Args:    []string{appName, "DOKKU_APP_SHELL"},
+		})
+		appShell = results.StdoutContents()
+		return nil
+	})
+
+	errs.Wait()
+	if appShell != "" {
+		shell = appShell
+	} else if globalShell != "" {
+		shell = globalShell
+	}
+
+	return shell
 }
 
 // DokkuApps returns a list of all local apps
@@ -280,7 +334,7 @@ func DokkuApps() ([]string, error) {
 func UnfilteredDokkuApps() ([]string, error) {
 	apps := []string{}
 	dokkuRoot := MustGetEnv("DOKKU_ROOT")
-	files, err := ioutil.ReadDir(dokkuRoot)
+	files, err := os.ReadDir(dokkuRoot)
 	if err != nil {
 		return apps, fmt.Errorf("You haven't deployed any applications yet")
 	}
@@ -326,7 +380,10 @@ func IsDeployed(appName string) bool {
 	if deployed == "" {
 		deployed = "false"
 		scheduler := GetAppScheduler(appName)
-		_, err := PlugnTriggerOutput("scheduler-is-deployed", []string{scheduler, appName}...)
+		_, err := CallPlugnTrigger(PlugnTriggerInput{
+			Trigger: "scheduler-is-deployed",
+			Args:    []string{scheduler, appName},
+		})
 		if err == nil {
 			deployed = "true"
 		}
@@ -390,8 +447,8 @@ func ParseReportArgs(pluginName string, arguments []string) ([]string, string, e
 }
 
 // ParseScaleOutput allows golang plugins to properly parse the output of ps-current-scale
-func ParseScaleOutput(b []byte) (map[string]int, error) {
-	scale := make(map[string]int)
+func ParseScaleOutput(b []byte) (map[string]int32, error) {
+	scale := make(map[string]int32)
 
 	for _, line := range strings.Split(string(b), "\n") {
 		s := strings.SplitN(line, "=", 2)
@@ -399,11 +456,11 @@ func ParseScaleOutput(b []byte) (map[string]int, error) {
 			return scale, fmt.Errorf("invalid scale output stored by dokku: %v", line)
 		}
 		processType := s[0]
-		count, err := strconv.Atoi(s[1])
+		count, err := strconv.ParseInt(s[1], 10, 32)
 		if err != nil {
 			return scale, err
 		}
-		scale[processType] = count
+		scale[processType] = int32(count)
 	}
 
 	return scale, nil
@@ -517,7 +574,7 @@ func SuppressOutput(f errfunc) error {
 	err := f()
 
 	w.Close()
-	out, _ := ioutil.ReadAll(r)
+	out, _ := io.ReadAll(r)
 	os.Stdout = rescueStdout
 
 	if err != nil {
@@ -596,6 +653,15 @@ func (err *AppDoesNotExist) Error() string {
 	return fmt.Sprintf("App %s does not exist", err.appName)
 }
 
+// VarArgs skips a number of incoming arguments, returning what is left over
+func VarArgs(arguments []string, skip int) []string {
+	if len(arguments) <= skip {
+		return []string{}
+	}
+
+	return arguments[skip:]
+}
+
 // VerifyAppName checks if an app conforming to either the old or new
 // naming conventions exists
 func VerifyAppName(appName string) error {
@@ -616,11 +682,4 @@ func VerifyAppName(appName string) error {
 	}
 
 	return nil
-}
-
-func times(str string, n int) (out string) {
-	for i := 0; i < n; i++ {
-		out += str
-	}
-	return
 }

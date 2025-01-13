@@ -15,12 +15,12 @@ git_build_app_repo() {
 
   # clean up after ourselves
   local GIT_BUILD_APP_REPO_TMP_WORK_DIR=$(mktemp -d "/tmp/dokku-${DOKKU_PID}-${FUNCNAME[0]}.XXXXXX")
-  trap "rm -rf '$GIT_BUILD_APP_REPO_TMP_WORK_DIR' >/dev/null" RETURN INT TERM EXIT
+  trap "popd &>/dev/null || true; rm -rf '$GIT_BUILD_APP_REPO_TMP_WORK_DIR' >/dev/null" RETURN INT TERM EXIT
 
   chmod 755 "$GIT_BUILD_APP_REPO_TMP_WORK_DIR"
   unset GIT_DIR GIT_QUARANTINE_PATH GIT_WORK_TREE
 
-  ! plugn trigger app-exists "$APP" >/dev/null 2>&1 && plugn trigger app-maybe-create "$APP"
+  ! plugn trigger app-exists "$APP" &>/dev/null && plugn trigger app-maybe-create "$APP"
 
   fn-git-setup-build-dir "$APP" "$GIT_BUILD_APP_REPO_TMP_WORK_DIR" "$REV"
   pushd "$GIT_BUILD_APP_REPO_TMP_WORK_DIR" >/dev/null
@@ -57,10 +57,6 @@ git_trigger_build() {
         dokku_log_warn "Herokuish builder not supported on $ARCHITECTURE servers."
         dokku_log_warn "Switching to pack builder."
         BUILDER="pack"
-      elif [[ "$ARCHITECTURE" == "armhf" ]]; then
-        dokku_log_warn "Herokuish builder not supported on $ARCHITECTURE servers."
-        dokku_log_warn "Consider using a Dockerfile to build your app."
-        return 1
       fi
     fi
   fi
@@ -79,7 +75,7 @@ cmd-git-hook() {
   plugn trigger app-exists "$APP" 2>/dev/null || is_valid_app_name "$APP"
 
   DOKKU_DEPLOY_BRANCH="$(fn-git-deploy-branch "$APP")"
-  if ! git check-ref-format --branch "$DOKKU_DEPLOY_BRANCH" >/dev/null 2>&1; then
+  if ! git check-ref-format --branch "$DOKKU_DEPLOY_BRANCH" &>/dev/null; then
     echo $'\e[1G\e[K'"-----> WARNING: Invalid branch name '$DOKKU_DEPLOY_BRANCH' specified via deploy-branch setting."
     echo $'\e[1G\e[K'"-----> For more details, please see the man page for 'git-check-ref-format.'"
     return
@@ -89,17 +85,20 @@ cmd-git-hook() {
   while read -r oldrev newrev refname; do
     # Only run this script for the master branch. You can remove this
     # if block if you wish to run it for others as well.
-    if [[ $refname == "refs/heads/${DOKKU_DEPLOY_BRANCH}" ]]; then
-      # broken out into plugin so we might support other methods to receive an app
+    if [[ $refname == "refs/heads/${DOKKU_DEPLOY_BRANCH}" ]] || [[ $refname == "refs/tags/${DOKKU_DEPLOY_BRANCH}" ]]; then
       git_receive_app "$APP" "$newrev"
       plugn trigger deploy-source-set "$APP" "git-push" "$newrev"
     else
+      # broken out into plugin so we might support other methods to receive an app
       if [[ $(find "$PLUGIN_PATH"/enabled/*/receive-branch 2>/dev/null | wc -l) != 1 ]]; then
         plugn trigger receive-branch "$APP" "$newrev" "$refname"
         plugn trigger deploy-source-set "$APP" "git-push" "$newrev"
       elif [[ -z "$(fn-git-deploy-branch "$APP" "")" ]]; then
-        echo $'\e[1G\e[K'"-----> Set ${refname/refs\/heads\//} to DOKKU_DEPLOY_BRANCH."
-        fn-plugin-property-write "git" "$APP" "deploy-branch" "${refname/refs\/heads\//}"
+        local deploy_branch="${refname/refs\/heads\//}"
+        deploy_branch="${deploy_branch/refs\/tags\//}"
+
+        echo $'\e[1G\e[K'"-----> Set ${deploy_branch} as deploy-branch"
+        fn-plugin-property-write "git" "$APP" "deploy-branch" "${deploy_branch}"
         git_receive_app "$APP" "$newrev"
         plugn trigger deploy-source-set "$APP" "git-push" "$newrev"
       else
@@ -165,7 +164,7 @@ cmd-git-upload-pack() {
 
   APP="$(echo "$APP" | perl -pe 's/(?<!\\)'\''//g' | sed 's/\\'\''/'\''/g' | sed 's/^\///g')"
   is_valid_app_name "$APP"
-  ! plugn trigger app-exists "$APP" >/dev/null 2>&1 && plugn trigger app-maybe-create "$APP"
+  ! plugn trigger app-exists "$APP" &>/dev/null && plugn trigger app-maybe-create "$APP"
 
   plugn trigger git-pre-pull "$APP"
   cat | git-upload-pack "$DOKKU_ROOT/$APP"
@@ -180,7 +179,7 @@ cmd-git-glob() {
 
   plugn trigger app-exists "$APP" 2>/dev/null || is_valid_app_name "$APP"
   if [[ $1 == "git-receive-pack" && ! -d "$APP_PATH/refs" ]]; then
-    ! plugn trigger app-exists "$APP" >/dev/null 2>&1 && plugn trigger app-maybe-create "$APP"
+    ! plugn trigger app-exists "$APP" &>/dev/null && plugn trigger app-maybe-create "$APP"
 
     fn-git-create-hook "$APP"
   fi

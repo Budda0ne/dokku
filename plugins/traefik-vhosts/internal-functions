@@ -76,7 +76,7 @@ fn-traefik-dashboard-enabled() {
 }
 
 fn-traefik-image() {
-  fn-plugin-property-get-default "traefik" "--global" "image" "traefik:v2.8"
+  fn-plugin-property-get-default "traefik" "--global" "image" "$(grep "FROM" "$PLUGIN_AVAILABLE_PATH/traefik-vhosts/Dockerfile" | awk '{print $2}')"
 }
 
 fn-traefik-letsencrypt-email() {
@@ -93,7 +93,10 @@ fn-traefik-log-level() {
   echo "${log_level^^}"
 }
 
-fn-traefik-priority() {
-  declare APP="$1"
-  fn-plugin-property-get-default "traefik" "$APP" "priority" ""
+fn-traefik-http-entry-point() {
+  fn-plugin-property-get-default "traefik" "--global" "http-entry-point" "http"
+}
+
+fn-traefik-https-entry-point() {
+  fn-plugin-property-get-default "traefik" "--global" "https-entry-point" "https"
 }

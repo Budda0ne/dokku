@@ -20,8 +20,7 @@ Additional commands:`
 	helpContent = `
     registry:login [--password-stdin] <server> <username> [<password>], Login to a docker registry
     registry:report [<app>] [<flag>], Displays a registry report for one or more apps
-    registry:set <app> <property> (<value>), Set or clear a registry property for an app
-`
+    registry:set <app> <property> (<value>), Set or clear a registry property for an app`
 )
 
 func main() {
@@ -33,11 +32,11 @@ func main() {
 	case "registry", "registry:help":
 		usage()
 	case "help":
-		command := common.NewShellCmd(fmt.Sprintf("ps -o command= %d", os.Getppid()))
-		command.ShowOutput = false
-		output, err := command.Output()
-
-		if err == nil && strings.Contains(string(output), "--all") {
+		result, err := common.CallExecCommand(common.ExecCommandInput{
+			Command: "ps",
+			Args:    []string{"-o", "command=", strconv.Itoa(os.Getppid())},
+		})
+		if err == nil && strings.Contains(result.StdoutContents(), "--all") {
 			fmt.Println(helpContent)
 		} else {
 			fmt.Print("\n    registry, Manage registry settings for an app\n")

@@ -9,19 +9,16 @@ readonly DOKKU_GIT_REV="$(git rev-parse HEAD)"
 trap "rm -rf '$TMP_WORK_DIR' >/dev/null" RETURN INT TERM EXIT
 
 log-info() {
-  # shellcheck disable=SC2034
   declare desc="Log info formatter"
   echo "$*"
 }
 
 log-error() {
-  # shellcheck disable=SC2034
   declare desc="Log error formatter"
   echo "!   $*" 1>&2
 }
 
 log-fail() {
-  # shellcheck disable=SC2034
   declare desc="Log fail formatter"
   log-error "$*"
   exit 1
@@ -137,7 +134,7 @@ fn-publish-package() {
   [[ "$RELEASE_TYPE" == "raspbian" ]] && DIST=raspbian
 
   if [[ "$RELEASE_TYPE" == "raspbian" ]]; then
-    OS_IDS=("buster" "bullseye")
+    OS_IDS=("bullseye" "bookworm")
     for OS_ID in "${OS_IDS[@]}"; do
       log-info "(release-dokku) pushing deb to packagecloud.com/${REPOSITORY}/${DIST}"
       package_cloud push "${REPOSITORY}/${DIST}/${OS_ID}" "$PACKAGE_NAME"
@@ -147,7 +144,7 @@ fn-publish-package() {
       fi
     done
   elif [[ "$DIST" == "ubuntu" ]]; then
-    OS_IDS=("bionic" "focal" "jammy")
+    OS_IDS=("focal" "jammy" "noble")
     for OS_ID in "${OS_IDS[@]}"; do
       log-info "(release-dokku) pushing ${RELEASE_TYPE} to packagecloud.com/${REPOSITORY}/${DIST}"
       package_cloud push "${REPOSITORY}/${DIST}/${OS_ID}" "$PACKAGE_NAME"
@@ -158,7 +155,7 @@ fn-publish-package() {
     done
 
     DIST=debian
-    OS_IDS=("buster" "bullseye")
+    OS_IDS=("bullseye" "bookworm")
     for OS_ID in "${OS_IDS[@]}"; do
       log-info "(release-dokku) pushing ${RELEASE_TYPE} to packagecloud.com/${REPOSITORY}/${DIST}"
       package_cloud push "${REPOSITORY}/${DIST}/${OS_ID}" "$PACKAGE_NAME"
@@ -186,8 +183,12 @@ fn-replace-version() {
 
 fn-repo-merged-requests() {
   declare desc="Retrieves all pull request ids since a given release of dokku"
-  declare TAG="$1"
-  git log "v${TAG}..HEAD" --oneline | grep "Merge pull request" | cut -d' ' -f 5 | cut -d '#' -f2
+  declare TAG="$1" IS_PATCH="$2"
+  if [[ "$IS_PATCH" == "true" ]]; then
+    git log "v${TAG}..HEAD" --oneline | grep "Merge pull request" | cut -d' ' -f 5 | cut -d '#' -f2
+  else
+    curl -u "$RELEASE_GITHUB_USERNAME:$RELEASE_GITHUB_API_TOKEN" --fail -sS "https://api.github.com/search/issues?q=repo:dokku/dokku+milestone:v${NEXT_VERSION}+is:pr&per_page=100" | jq '.items[].number'
+  fi
 }
 
 fn-repo-push-tags() {
@@ -204,7 +205,7 @@ fn-repo-push-tags() {
 
 fn-repo-update() {
   declare desc="Updates files within the repository for a given release"
-  declare IS_RELEASE="$1" CURRENT_VERSION="$2" NEXT_VERSION="$3"
+  declare IS_RELEASE="$1" CURRENT_VERSION="$2" NEXT_VERSION="$3" IS_PATCH="$4"
 
   log-info "(release-dokku) Replacing ${CURRENT_VERSION} with ${NEXT_VERSION}"
   for f in plugins/*/plugin.toml; do
@@ -224,14 +225,14 @@ fn-repo-update() {
   fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" docs/development/release-process.md
   fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" docs/getting-started/install/docker.md
   fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" docs/getting-started/installation/index.md
-  fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" docs/home.html
+  fn-replace-version "v$CURRENT_VERSION" "v$NEXT_VERSION" docs/home.html
   fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" docs/template.html
   fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" README.md
 
   if [[ "$RELEASE" == 'patch' ]]; then
     fn-replace-version "$CURRENT_VERSION" "$NEXT_VERSION" docs/assets/versions.json
   else
-    versions=$(python -c 'import json,sys;d=json.load(sys.stdin);d["max-versions"].append("'"${NEXT_VERSION}"'"); print(json.dumps(d, indent=2, sort_keys=True))' <docs/assets/versions.json)
+    versions=$(python3 -c 'import json,sys;d=json.load(sys.stdin);d["max-versions"].append("'"${NEXT_VERSION}"'"); print(json.dumps(d, indent=2, sort_keys=True))' <docs/assets/versions.json)
     echo "$versions" >docs/assets/versions.json
     git add docs/assets/versions.json
   fi
@@ -241,13 +242,13 @@ fn-repo-update() {
   fi
 
   log-info "(release-dokku) Adding HISTORY.md, committing and tagging"
-  fn-repo-update-history-and-commit "$CURRENT_VERSION" "$NEXT_VERSION"
+  fn-repo-update-history-and-commit "$CURRENT_VERSION" "$NEXT_VERSION" "$IS_PATCH"
   git tag "v${NEXT_VERSION}"
 }
 
 fn-repo-update-history-and-commit() {
   declare desc="Updates the history file and commits the changes"
-  declare CURRENT_VERSION="$1" NEXT_VERSION="$2"
+  declare CURRENT_VERSION="$1" NEXT_VERSION="$2" IS_PATCH="$3"
   local PULL_REQUEST_ID TITLE AUTHOR TYPE CHANGELOG_TEXT
   local COMMIT_MESSAGE HISTORY HISTORY_CONTENTS HISTORY_BUG HISTORY_DEPENDENCY HISTORY_DEPRECATION HISTORY_DOCUMENTATION HISTORY_ENHANCEMENT HISTORY_BC_BREAK HISTORY_REFACTOR HISTORY_REMOVAL HISTORY_OTHER HISTORY_TESTS ISSUE_FILE
 
@@ -255,7 +256,7 @@ fn-repo-update-history-and-commit() {
 
   mkdir -p /tmp/github-data
 
-  for PULL_REQUEST_ID in $(fn-repo-merged-requests "$CURRENT_VERSION"); do
+  for PULL_REQUEST_ID in $(fn-repo-merged-requests "$CURRENT_VERSION" "$IS_PATCH"); do
     ISSUE_FILE="/tmp/github-data/${PULL_REQUEST_ID}.json"
     if [[ ! -f "$ISSUE_FILE" ]]; then
       while true; do
@@ -386,15 +387,17 @@ fn-build-docker-image() {
 
   if [[ "$IS_RELEASE" == "true" ]]; then
     docker buildx build \
-      --platform linux/arm,linux/arm64,linux/amd64 \
+      --platform linux/arm64,linux/amd64 \
       --progress plain \
       --push \
+      --label "org.opencontainers.image.version=$VERSION" \
       --tag "dokku/dokku:latest" \
       --tag "dokku/dokku:$VERSION" .
-  else
+  elif [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
     docker buildx build \
-      --platform linux/arm,linux/arm64,linux/amd64 \
+      --platform linux/arm64,linux/amd64 \
       --progress plain \
+      --label "org.opencontainers.image.version=$VERSION" \
       --tag "dokku/dokku:latest" \
       --tag "dokku/dokku:$(echo "$VERSION" | tr + -)" .
   fi
@@ -402,7 +405,7 @@ fn-build-docker-image() {
 
 main() {
   declare RELEASE="$1"
-  local CURRENT_VERSION NEXT_VERSION IS_RELEASE
+  local CURRENT_VERSION NEXT_VERSION IS_PATCH IS_RELEASE
   local VALID_RELEASE_LEVELS=("major" "minor" "patch" "betafish" "build")
 
   if [[ "$RELEASE" == '--trace' ]]; then
@@ -433,20 +436,22 @@ main() {
   NEXT_VERSION="$(fn-version-next "$CURRENT_VERSION" "$RELEASE")"
   IS_RELEASE="$(fn-is-release "$RELEASE")"
 
+  IS_PATCH="false"
+  if [[ "$RELEASE" == "patch" ]]; then
+    IS_PATCH="true"
+  fi
+
   echo "v${NEXT_VERSION}" >build/next-version
 
-  fn-repo-update "$IS_RELEASE" "$CURRENT_VERSION" "$NEXT_VERSION"
+  fn-repo-update "$IS_RELEASE" "$CURRENT_VERSION" "$NEXT_VERSION" "$IS_PATCH"
   fn-build-dokku "$IS_RELEASE" "$NEXT_VERSION" || log-fail "Error building package"
-  fn-extract-package "$IS_RELEASE" "dokku_${NEXT_VERSION}_armhf.deb" || log-fail "Error extracting deb package"
   fn-extract-package "$IS_RELEASE" "dokku_${NEXT_VERSION}_arm64.deb" || log-fail "Error extracting deb package"
   fn-extract-package "$IS_RELEASE" "dokku_${NEXT_VERSION}_amd64.deb" || log-fail "Error extracting deb package"
   mkdir -p build/package
   cp -f "build/dokku_${NEXT_VERSION}_amd64.deb" build/package/dokku-amd64.deb
   cp -f "build/dokku_${NEXT_VERSION}_arm64.deb" build/package/dokku-arm64.deb
-  cp -f "build/dokku_${NEXT_VERSION}_armhf.deb" build/package/dokku-armhf.deb
 
   if [[ "$RELEASE" != "build" ]]; then
-    fn-publish-package "$IS_RELEASE" "raspbian" "build/dokku_${NEXT_VERSION}_armhf.deb" || log-fail "Error publishing deb package"
     fn-publish-package "$IS_RELEASE" "deb" "build/dokku_${NEXT_VERSION}_arm64.deb" || log-fail "Error publishing deb package"
     fn-publish-package "$IS_RELEASE" "deb" "build/dokku_${NEXT_VERSION}_amd64.deb" || log-fail "Error publishing deb package"
     fn-build-docker-image "$NEXT_VERSION" "$IS_RELEASE" || log-fail "Error building docker image"
