@@ -55,15 +55,19 @@ func main() {
 	case "post-stop":
 		appName := flag.Arg(0)
 		err = ps.TriggerPostStop(appName)
-	case "pre-deploy":
-		appName := flag.Arg(0)
-		imageTag := flag.Arg(1)
-		err = ps.TriggerPreDeploy(appName, imageTag)
+	case "post-release-builder":
+		builderType := flag.Arg(0)
+		appName := flag.Arg(1)
+		image := flag.Arg(2)
+		err = ps.TriggerPostReleaseBuilder(builderType, appName, image)
 	case "procfile-get-command":
 		appName := flag.Arg(0)
 		processType := flag.Arg(1)
 		port := common.ToInt(flag.Arg(2), 5000)
 		err = ps.TriggerProcfileGetCommand(appName, processType, port)
+	case "procfile-exists":
+		appName := flag.Arg(0)
+		err = ps.TriggerProcfileExists(appName)
 	case "ps-can-scale":
 		appName := flag.Arg(0)
 		canScale := common.ToBool(flag.Arg(1))

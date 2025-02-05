@@ -1,5 +1,6 @@
 # Herokuish Buildpacks
 
+> [!IMPORTANT]
 > Subcommands new as of 0.15.0
 
 ```
@@ -17,14 +18,15 @@ builder-herokuish:report [<app>] [<flag>]   # Displays a builder-herokuish repor
 builder-herokuish:set <app> <key> (<value>) # Set or clear a builder-herokuish property for an app
 ```
 
-> Warning: If using the `buildpacks` plugin, be sure to unset any `BUILDPACK_URL` and remove any such entries from a committed `.env` file. A specified `BUILDPACK_URL` will always override a `.buildpacks` file or the buildpacks plugin.
+> [!WARNING]
+> If using the `buildpacks` plugin, be sure to unset any `BUILDPACK_URL` and remove any such entries from a committed `.env` file. A specified `BUILDPACK_URL` will always override a `.buildpacks` file or the buildpacks plugin.
 
 Dokku normally defaults to using [Heroku buildpacks](https://devcenter.heroku.com/articles/buildpacks) for deployment, though this may be overridden by committing a valid `Dockerfile` to the root of your repository and pushing the repository to your Dokku installation. To avoid this automatic `Dockerfile` deployment detection, you may do one of the following:
 
 - Set a `BUILDPACK_URL` environment variable
-  - This can be done via `dokku config:set` or via a committed `.env` file in the root of the repository. See the [environment variable documentation](/docs/configuration/environment-variables.md) for more details.
+    - This can be done via `dokku config:set` or via a committed `.env` file in the root of the repository. See the [environment variable documentation](/docs/configuration/environment-variables.md) for more details.
 - Create a `.buildpacks` file in the root of your repository.
-  - This can be via a committed `.buildpacks` file or managed via the `buildpacks` plugin commands.
+    - This can be via a committed `.buildpacks` file or managed via the `buildpacks` plugin commands.
 
 This page will cover usage of the `buildpacks` plugin.
 
@@ -35,9 +37,9 @@ This page will cover usage of the `buildpacks` plugin.
 This builder will be auto-detected in either the following cases:
 
 - The `BUILDPACK_URL` app environment variable is set.
-  - This can be done via `dokku config:set` or via a committed `.env` file in the root of the repository. See the [environment variable documentation](/docs/configuration/environment-variables.md) for more details.
+    - This can be done via `dokku config:set` or via a committed `.env` file in the root of the repository. See the [environment variable documentation](/docs/configuration/environment-variables.md) for more details.
 - A `.buildpacks` file exists in the root of the app repository.
-  - This can be via a committed `.buildpacks` file or managed via the `buildpacks` plugin commands.
+    - This can be via a committed `.buildpacks` file or managed via the `buildpacks` plugin commands.
 
 The builder can also be specified via the `builder:set` command:
 
@@ -147,6 +149,7 @@ dokku buildpacks:clear node-js-app
 
 ### Customizing the Buildpack stack builder
 
+> [!IMPORTANT]
 > New as of 0.23.0
 
 The default stack builder in use by Herokuish buildpacks in Dokku is based on `gliderlabs/herokuish:latest`. Typically, this is installed via an OS package which pulls the requisite Docker image. Users may desire to switch the stack builder to a custom version, either to update the operating system or to customize packages included with the stack builder. This can be performed via the `buildpacks:set-property` command.
@@ -163,7 +166,7 @@ dokku buildpacks:set-property node-js-app stack
 
 A change in the stack builder value will execute the `post-stack-set` trigger.
 
-Finally, stack builders can be set or unset globally as a fallback. This will take precedence over a globally set `DOKKU_IMAGE` environment variable (`gliderlabs/herokuish:latest-20` by default).
+Finally, stack builders can be set or unset globally as a fallback. This will take precedence over a globally set `DOKKU_IMAGE` environment variable (`gliderlabs/herokuish:latest-24` by default).
 
 ```shell
 # set globally
@@ -175,9 +178,10 @@ dokku buildpacks:set-property --global stack
 
 ### Allowing herokuish for non-amd64 platforms
 
+> [!IMPORTANT]
 > New as of 0.29.0
 
-By default, the builder-herokuish plugin is not enabled for non-amd64 platforms, and attempting to use it is blocked. This is because the majority of buildpacks are not cross-platform compatible, and thus building apps will either be considerably slower - due to emulating the amd64 platform - or won't work - due to building amd64 packages on arm/arm64 platforms.
+By default, the builder-herokuish plugin is not enabled for non-amd64 platforms, and attempting to use it is blocked. This is because the majority of buildpacks are not cross-platform compatible, and thus building apps will either be considerably slower - due to emulating the amd64 platform - or won't work - due to building amd64 packages on arm64 platforms.
 
 To force-enable herokuish on non-amd64 platforms, the `allowed` property can be set via `builder-herokuish:set`. The default value depends on the host platform architecture (`true` on amd64, `false` otherwise).
 
@@ -213,18 +217,18 @@ dokku buildpacks:report
 
 ```
 =====> node-js-app buildpacks information
-       Buildpacks computed stack:  gliderlabs/herokuish:v0.5.23-20
-       Buildpacks global stack:    gliderlabs/herokuish:latest-20
+       Buildpacks computed stack:  gliderlabs/herokuish:v0.7.0-22
+       Buildpacks global stack:    gliderlabs/herokuish:latest-24
        Buildpacks list:            https://github.com/heroku/heroku-buildpack-nodejs.git
-       Buildpacks stack:           gliderlabs/herokuish:v0.5.23-20
+       Buildpacks stack:           gliderlabs/herokuish:v0.7.0-20
 =====> python-sample buildpacks information
-       Buildpacks computed stack:  gliderlabs/herokuish:latest-20
-       Buildpacks global stack:    gliderlabs/herokuish:latest-20
+       Buildpacks computed stack:  gliderlabs/herokuish:latest-24
+       Buildpacks global stack:    gliderlabs/herokuish:latest-24
        Buildpacks list:            https://github.com/heroku/heroku-buildpack-nodejs.git,https://github.com/heroku/heroku-buildpack-python.git
        Buildpacks stack:
 =====> ruby-sample buildpacks information
-       Buildpacks computed stack:  gliderlabs/herokuish:latest-20
-       Buildpacks global stack:    gliderlabs/herokuish:latest-20
+       Buildpacks computed stack:  gliderlabs/herokuish:latest-24
+       Buildpacks global stack:    gliderlabs/herokuish:latest-24
        Buildpacks list:
        Buildpacks stack:
 ```
@@ -248,6 +252,7 @@ dokku buildpacks:report node-js-app --buildpacks-list
 
 ### Displaying builder-herokuish reports for an app
 
+> [!IMPORTANT]
 > New as of 0.29.0
 
 You can get a report about the app's storage status using the `builder-herokuish:report` command:
@@ -301,7 +306,7 @@ false
 If an application was previously deployed via Dockerfile, the following commands should be run before a buildpack deploy will succeed:
 
 ```shell
-dokku config:unset --no-restart node-js-app DOKKU_PROXY_PORT_MAP
+dokku ports:clear node-js-app
 ```
 
 ### Using a specific buildpack version
@@ -322,31 +327,6 @@ This will use the latest commit on the `master` branch of the specified buildpac
 dokku buildpacks:set node-js-app https://github.com/heroku/heroku-buildpack-nodejs#v87
 ```
 
-### Specifying commands via Procfile
-
-While many buildpacks have a default command that is run when a detected repository is pushed, it is possible to override this command via a Procfile. A Procfile can also be used to specify multiple commands, each of which is subject to process scaling. See the [process scaling documentation](/docs/processes/process-management.md) for more details around scaling individual processes.
-
-A Procfile is a file named `Procfile`. It should be named `Procfile` exactly, and not anything else. For example, `Procfile.txt` is not valid. The file should be a simple text file.
-
-The file must be placed in the root directory of your application. It will not function if placed in a subdirectory.
-
-If the file exists, it should not be empty, as doing so may result in a failed deploy.
-
-The syntax for declaring a `Procfile` is as follows. Note that the format is one process type per line, with no duplicate process types.
-
-```
-<process type>: <command>
-```
-
-If, for example, you have multiple queue workers and wish to scale them separately, the following would be a valid way to work around the requirement of not duplicating process types:
-
-```Procfile
-worker:           env QUEUE=* bundle exec rake resque:work
-importantworker:  env QUEUE=important bundle exec rake resque:work
-```
-
-The `web` process type holds some significance in that it is the only process type that is automatically scaled to `1` on the initial application deploy. See the [process scaling documentation](/docs/processes/process-management.md) for more details around scaling individual processes.
-
 ### `curl` build timeouts
 
 Certain buildpacks may time out in retrieving dependencies via `curl`. This can happen when your network connection is poor or if there is significant network congestion. You may see a message similar to `gzip: stdin: unexpected end of file` after a `curl` command.
@@ -361,3 +341,7 @@ dokku config:set --global CURL_CONNECT_TIMEOUT=180
 ### Clearing buildpack cache
 
 See the [repository management documentation](/docs/advanced-usage/repository-management.md#clearing-app-cache) for more information on how to clear buildpack build cache for an application.
+
+### Specifying commands via Procfile
+
+See the [Procfile documentation](/docs/processes/process-management.md#procfile) for more information on how to specify different processes for your app.

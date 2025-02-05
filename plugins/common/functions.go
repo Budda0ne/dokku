@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"os"
 	"strings"
 )
@@ -25,12 +24,15 @@ func filterApps(apps []string) ([]string, error) {
 	}
 
 	args := append([]string{sshUser, sshName}, apps...)
-	b, _ := PlugnTriggerOutput("user-auth-app", args...)
-	filteredApps := strings.Split(strings.TrimSpace(string(b[:])), "\n")
+	results, _ := CallPlugnTrigger(PlugnTriggerInput{
+		Trigger: "user-auth-app",
+		Args:    args,
+	})
+	filteredApps := strings.Split(results.StdoutContents(), "\n")
 	filteredApps = removeEmptyEntries(filteredApps)
 
 	if len(filteredApps) == 0 {
-		return filteredApps, fmt.Errorf("You haven't deployed any applications yet")
+		return filteredApps, NoAppsExist
 	}
 
 	return filteredApps, nil
@@ -44,4 +46,11 @@ func removeEmptyEntries(s []string) []string {
 		}
 	}
 	return r
+}
+
+func times(str string, n int) (out string) {
+	for i := 0; i < n; i++ {
+		out += str
+	}
+	return
 }

@@ -18,9 +18,10 @@ Manage scheduled cron tasks
 Additional commands:`
 
 	helpContent = `
-    cron:list <app>, List scheduled cron tasks for an app
+    cron:list <app> [--format json|stdout], List scheduled cron tasks for an app
     cron:report [<app>] [<flag>], Display report about an app
-`
+    cron:run <app> <cron_id> [--detach], Run a cron task on the fly
+    cron:set [--global|<app>] <key> <value>, Set or clear a cron property for an app`
 )
 
 func main() {
@@ -32,11 +33,11 @@ func main() {
 	case "cron", "cron:help":
 		usage()
 	case "help":
-		command := common.NewShellCmd(fmt.Sprintf("ps -o command= %d", os.Getppid()))
-		command.ShowOutput = false
-		output, err := command.Output()
-
-		if err == nil && strings.Contains(string(output), "--all") {
+		result, err := common.CallExecCommand(common.ExecCommandInput{
+			Command: "ps",
+			Args:    []string{"-o", "command=", strconv.Itoa(os.Getppid())},
+		})
+		if err == nil && strings.Contains(result.StdoutContents(), "--all") {
 			fmt.Println(helpContent)
 		} else {
 			fmt.Print("\n    cron, Manage scheduled cron tasks\n")

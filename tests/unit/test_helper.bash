@@ -4,16 +4,20 @@
 DOKKU_ROOT=${DOKKU_ROOT:=~dokku}
 DOCKER_BIN=${DOCKER_BIN:="docker"}
 DOKKU_LIB_ROOT=${DOKKU_LIB_PATH:="/var/lib/dokku"}
+DOKKU_DOMAIN=${DOKKU_DOMAIN:="dokku.me"}
 PLUGIN_PATH=${PLUGIN_PATH:="$DOKKU_LIB_ROOT/plugins"}
 PLUGIN_AVAILABLE_PATH=${PLUGIN_AVAILABLE_PATH:="$PLUGIN_PATH/available"}
 PLUGIN_ENABLED_PATH=${PLUGIN_ENABLED_PATH:="$PLUGIN_PATH/enabled"}
 PLUGIN_CORE_PATH=${PLUGIN_CORE_PATH:="$DOKKU_LIB_ROOT/core-plugins"}
 PLUGIN_CORE_AVAILABLE_PATH=${PLUGIN_CORE_AVAILABLE_PATH:="$PLUGIN_CORE_PATH/available"}
-CUSTOM_TEMPLATE_SSL_DOMAIN=customssltemplate.dokku.me
+CUSTOM_TEMPLATE_SSL_DOMAIN="customssltemplate.${DOKKU_DOMAIN}"
 UUID=$(uuidgen)
 TEST_APP="rdmtestapp-${UUID}"
 TEST_NETWORK="test-network-${UUID}"
 SKIPPED_TEST_ERR_MSG="previous test failed! skipping remaining tests..."
+TEST_PLUGIN_NAME=smoke-test-plugin
+TEST_PLUGIN_GIT_REPO=https://github.com/dokku/${TEST_PLUGIN_NAME}.git
+TEST_PLUGIN_LOCAL_REPO="$(mktemp -d)/$TEST_PLUGIN_NAME"
 
 # global setup() and teardown()
 # skips remaining tests on first failure
@@ -27,6 +31,7 @@ global_setup() {
 
 global_teardown() {
   [[ -n "$BATS_TEST_COMPLETED" ]] || touch "${BATS_PARENT_TMPNAME}.skip"
+  rm "${BATS_PARENT_TMPNAME}.skip" || true
   cleanup_apps
   cleanup_containers
 }
@@ -44,6 +49,15 @@ cleanup_containers() {
   fi
 }
 
+clone_test_plugin() {
+  git clone "$TEST_PLUGIN_GIT_REPO" "$TEST_PLUGIN_LOCAL_REPO"
+}
+
+remove_test_plugin() {
+  rm -rf "${PLUGIN_ENABLED_PATH:?}/$TEST_PLUGIN_NAME" "${PLUGIN_AVAILABLE_PATH:?}/$TEST_PLUGIN_NAME"
+  rm -rf "$TEST_PLUGIN_LOCAL_REPO"
+}
+
 # test functions
 flunk() {
   {
@@ -57,8 +71,6 @@ flunk() {
 }
 
 # ShellCheck doesn't know about $status from Bats
-# shellcheck disable=SC2154
-# shellcheck disable=SC2120
 assert_success() {
   if [[ "$status" -ne 0 ]]; then
     flunk "command failed with exit status $status"
@@ -68,8 +80,6 @@ assert_success() {
 }
 
 # ShellCheck doesn't know about $status from Bats
-# shellcheck disable=SC2154
-# shellcheck disable=SC2120
 assert_failure() {
   if [[ "$status" -eq 0 ]]; then
     flunk "expected failed exit status"
@@ -97,7 +107,6 @@ assert_not_equal() {
 }
 
 # ShellCheck doesn't know about $output from Bats
-# shellcheck disable=SC2154
 assert_output() {
   local expected
   if [[ $# -eq 0 ]]; then
@@ -109,7 +118,6 @@ assert_output() {
 }
 
 # ShellCheck doesn't know about $output from Bats
-# shellcheck disable=SC2154
 assert_not_output() {
   local expected
   if [[ $# -eq 0 ]]; then
@@ -121,19 +129,16 @@ assert_not_output() {
 }
 
 # ShellCheck doesn't know about $output from Bats
-# shellcheck disable=SC2154
 assert_output_exists() {
   [[ -n "$output" ]] || flunk "expected output, found none"
 }
 
 # ShellCheck doesn't know about $output from Bats
-# shellcheck disable=SC2154
 assert_output_not_exists() {
   [[ -z "$output" ]] || flunk "expected no output, found some"
 }
 
 # ShellCheck doesn't know about $output from Bats
-# shellcheck disable=SC2154
 assert_output_contains() {
   local input="$output"
   local expected="$1"
@@ -147,7 +152,6 @@ assert_output_contains() {
 }
 
 # ShellCheck doesn't know about $lines from Bats
-# shellcheck disable=SC2154
 assert_line() {
   if [[ "$1" -ge 0 ]] 2>/dev/null; then
     assert_equal "$2" "${lines[$1]}"
@@ -161,7 +165,6 @@ assert_line() {
 }
 
 # ShellCheck doesn't know about $lines from Bats
-# shellcheck disable=SC2154
 assert_line_count() {
   declare EXPECTED="$1"
   local num_lines="${#lines[@]}"
@@ -206,9 +209,7 @@ create_key() {
 }
 
 destroy_app() {
-  local RC="$1"
-  local RC=${RC:=0}
-  local APP="$2"
+  declare RC="${1:-0}" APP="$2"
   local TEST_APP=${APP:=$TEST_APP}
   dokku --force apps:destroy "$TEST_APP"
   return "$RC"
@@ -218,7 +219,6 @@ destroy_key() {
   rm -f /tmp/testkey* &>/dev/null || true
 }
 
-# shellcheck disable=SC2119
 check_urls() {
   local PATTERN="$1"
   run /bin/bash -c "dokku urls $TEST_APP | grep -E \"${PATTERN}\""
@@ -233,6 +233,38 @@ assert_http_success() {
   echo "output: $output"
   echo "status: $status"
   assert_output "200"
+}
+
+assert_http_localhost_response() {
+  local scheme="$1" domain="$2" port="${3:-80}" path="${4:-}" content="${5:-}" status_code="${6:-200}"
+  run curl --connect-to "$domain:$port:localhost:$port" -kSso /dev/null -w "%{http_code}" "$scheme://$domain:$port$path"
+  echo "curl: curl --connect-to $domain:$port:localhost:$port -kSso /dev/null -w %{http_code} $scheme://$domain:$port$path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output "$status_code"
+
+  if [[ -n "$content" ]]; then
+    run curl --connect-to "$domain:$port:localhost:$port" -kSs "$scheme://$domain:$port$path"
+    echo "output: $output"
+    echo "status: $status"
+    assert_output "$content"
+  fi
+}
+
+assert_http_localhost_response_contains() {
+  local scheme="$1" domain="$2" port="${3:-80}" path="${4:-}" content="${5:-}" status_code="${6:-200}"
+  run curl --connect-to "$domain:$port:localhost:$port" -kSso /dev/null -w "%{http_code}" "$scheme://$domain:$port$path"
+  echo "curl: curl --connect-to $domain:$port:localhost:$port -kSso /dev/null -w %{http_code} $scheme://$domain:$port$path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output "$status_code"
+
+  if [[ -n "$content" ]]; then
+    run curl --connect-to "$domain:$port:localhost:$port" -kSs "$scheme://$domain:$port$path"
+    echo "output: $output"
+    echo "status: $status"
+    assert_output_contains "$content"
+  fi
 }
 
 assert_ssl_domain() {
@@ -288,7 +320,7 @@ assert_url() {
   echo "VHOST: $(cat $DOKKU_ROOT/$TEST_APP/VHOST | xargs)"
   echo "tls: $(ls $DOKKU_ROOT/$TEST_APP/tls || true)"
   echo "proxy-is-enabled: $(dokku plugin:trigger proxy-is-enabled "$TEST_APP")"
-  echo "port-map: $(dokku config:get "$TEST_APP" DOKKU_PROXY_PORT_MAP)"
+  echo "port-map: $(dokku ports:report "$TEST_APP" --ports-map)"
   echo "url: $(dokku urls $TEST_APP)"
   echo "output: $output"
   echo "status: $status"
@@ -302,7 +334,7 @@ assert_urls() {
   echo "VHOST: $(cat $DOKKU_ROOT/$TEST_APP/VHOST | xargs)"
   echo "tls: $(ls $DOKKU_ROOT/$TEST_APP/tls || true)"
   echo "proxy-is-enabled: $(dokku plugin:trigger proxy-is-enabled "$TEST_APP")"
-  echo "port-map: $(dokku config:get "$TEST_APP" DOKKU_PROXY_PORT_MAP)"
+  echo "port-map: $(dokku ports:report "$TEST_APP" --ports-map)"
   echo "urls: $(dokku urls $TEST_APP)"
   echo "output: $output"
   echo "status: $status"
@@ -314,13 +346,12 @@ assert_urls() {
 deploy_app() {
   declare APP_TYPE="$1" GIT_REMOTE="$2" CUSTOM_TEMPLATE="$3" CUSTOM_PATH="$4"
   local APP_TYPE=${APP_TYPE:="python"}
-  local GIT_REMOTE=${GIT_REMOTE:="dokku@dokku.me:$TEST_APP"}
+  local GIT_REMOTE=${GIT_REMOTE:="dokku@${DOKKU_DOMAIN}:$TEST_APP"}
   local GIT_REMOTE_BRANCH=${GIT_REMOTE_BRANCH:="master"}
-  local TMP=${CUSTOM_TMP:=$(mktemp -d "/tmp/dokku.me.XXXXX")}
+  local TMP=${CUSTOM_TMP:=$(mktemp -d "/tmp/${DOKKU_DOMAIN}.XXXXX")}
 
   rmdir "$TMP" && cp -r "${BATS_TEST_DIRNAME}/../../tests/apps/$APP_TYPE" "$TMP"
 
-  # shellcheck disable=SC2086
   [[ -n "$CUSTOM_TEMPLATE" ]] && $CUSTOM_TEMPLATE $TEST_APP $TMP/$CUSTOM_PATH
 
   pushd "$TMP" &>/dev/null || exit 1
@@ -341,7 +372,7 @@ deploy_app() {
 
 setup_client_repo() {
   local TMP
-  TMP=$(mktemp -d "/tmp/dokku.me.XXXXX")
+  TMP=$(mktemp -d "/tmp/${DOKKU_DOMAIN}.XXXXX")
   rmdir "$TMP" && cp -r "${BATS_TEST_DIRNAME}/../../tests/apps/nodejs-express" "$TMP"
   cd "$TMP" || exit 1
   git init
@@ -357,7 +388,7 @@ setup_test_tls() {
   local TLS_TYPE="$1"
   local TLS="/home/dokku/$TEST_APP/tls"
 
-  if ! dokku apps:exists "$TEST_APP" >/dev/null 2>&1; then
+  if ! dokku apps:exists "$TEST_APP" &>/dev/null; then
     create_app "$TEST_APP"
   fi
   mkdir -p "$TLS"
@@ -457,7 +488,7 @@ custom_nginx_template() {
 server {
   listen      [::]:{{ \$listen_port }};
   listen      {{ \$listen_port }};
-  server_name {{ $.NOSSL_SERVER_NAME }} customtemplate.dokku.me;
+  server_name {{ $.NOSSL_SERVER_NAME }} customtemplate.${DOKKU_DOMAIN};
 
   location    / {
     proxy_pass  http://{{ $.APP }}-{{ \$upstream_port }};
@@ -535,6 +566,21 @@ add_postdeploy_command() {
   echo "${contents}" >"$APP_REPO_DIR/app.json"
 }
 
+move_dockerfile_into_place() {
+  local APP="$1"
+  local APP_REPO_DIR="$2"
+  [[ -z "$APP" ]] && local APP="$TEST_APP"
+  mv "$APP_REPO_DIR/alt.Dockerfile" "$APP_REPO_DIR/Dockerfile"
+}
+
+move_expose_dockerfile_into_place() {
+  local APP="$1"
+  local APP_REPO_DIR="$2"
+  [[ -z "$APP" ]] && local APP="$TEST_APP"
+  cat "$APP_REPO_DIR/expose.Dockerfile"
+  mv "$APP_REPO_DIR/expose.Dockerfile" "$APP_REPO_DIR/Dockerfile"
+}
+
 add_requirements_txt() {
   local APP="$1"
   local APP_REPO_DIR="$2"
@@ -542,54 +588,55 @@ add_requirements_txt() {
   echo "flask" >>"$APP_REPO_DIR/requirements.txt"
 }
 
+add_requirements_txt_cnb() {
+  local APP="$1"
+  local APP_REPO_DIR="$2"
+  [[ -z "$APP" ]] && local APP="$TEST_APP"
+
+  mv "$APP_REPO_DIR/app-cnb.json" "$APP_REPO_DIR/app.json"
+  add_requirements_txt "$APP" "$APP_REPO_DIR"
+}
+
 create_network() {
-  local NETWORK_NAME="$1:=$TEST_NETWORK"
+  local NETWORK_NAME="${1:-$TEST_NETWORK}"
 
   NETWORK=$(docker network ls -q -f name="$NETWORK_NAME")
   [[ -z "$NETWORK" ]] && docker network create "$NETWORK_NAME"
 }
 
 attach_network() {
-  local NETWORK_NAME="$1:=$TEST_NETWORK"
+  local NETWORK_NAME="${1:-$TEST_NETWORK}"
 
   NETWORK=$(docker network ls -q -f name="$NETWORK_NAME")
   [[ -n "$NETWORK" ]] && docker network connect "$NETWORK_NAME" "${TEST_APP}.web.1"
 }
 
 create_attach_network() {
-  local NETWORK_NAME="$1:=$TEST_NETWORK"
+  local NETWORK_NAME="${1:-$TEST_NETWORK}"
 
   create_network "$NETWORK_NAME"
   attach_network "$NETWORK_NAME"
 }
 
 delete_network() {
-  local NETWORK_NAME="$1:=$TEST_NETWORK"
+  local NETWORK_NAME="${1:-$TEST_NETWORK}"
 
   NETWORK=$(docker network ls -q -f name="$NETWORK_NAME")
   [[ -n "$NETWORK" ]] && docker network rm "$NETWORK_NAME"
 }
 
 detach_network() {
-  local NETWORK_NAME="$1:=$TEST_NETWORK"
+  local NETWORK_NAME="${1:-$TEST_NETWORK}"
 
   NETWORK=$(docker network ls -q -f name="$NETWORK_NAME")
   [[ -z "$NETWORK" ]] && docker network disconnect "$NETWORK_NAME" "${TEST_APP}.web.1"
 }
 
 detach_delete_network() {
-  local NETWORK_NAME="$1:=$TEST_NETWORK"
+  local NETWORK_NAME="${1:-$TEST_NETWORK}"
 
   detach_network "$NETWORK_NAME"
   delete_network "$NETWORK_NAME"
-}
-
-install_pack() {
-  if ! command -v "pack" &>/dev/null; then
-    add-apt-repository --yes ppa:cncf-buildpacks/pack-cli
-    apt-get update
-    apt-get --yes install pack-cli
-  fi
 }
 
 convert_to_dockerfile() {
@@ -597,4 +644,73 @@ convert_to_dockerfile() {
   local APP_REPO_DIR="$2"
   [[ -z "$APP" ]] && local APP="$TEST_APP"
   mv "$APP_REPO_DIR/dockerfile.Dockerfile" "$APP_REPO_DIR/Dockerfile"
+}
+
+install_pack() {
+  if [[ ! -x /usr/bin/pack ]]; then
+    add-apt-repository --yes ppa:cncf-buildpacks/pack-cli
+    apt-get update
+    apt-get --yes install pack-cli
+  fi
+}
+
+install_nixpacks() {
+  if ! command -v "nixpacks" &>/dev/null; then
+    curl -sSL https://nixpacks.com/install.sh | FORCE=1 bash
+  fi
+}
+
+install_k3s() {
+  run /bin/bash -c "dokku proxy:set --global k3s"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku registry:set --global server hub.docker.com"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku registry:set --global image-repo-template '$DOCKERHUB_USERNAME/{{ .AppName }}'"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku registry:set --global push-on-release true"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku scheduler:set --global selected k3s"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku registry:login docker.io $DOCKERHUB_USERNAME $DOCKERHUB_TOKEN"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+  assert_output_contains "Login Succeeded"
+
+  INGRESS_CLASS="${INGRESS_CLASS:-traefik}"
+  local args="--ingress-class $INGRESS_CLASS"
+  if [[ "$TAINT_SCHEDULING" == "true" ]]; then
+    args="$args --taint-scheduling"
+  fi
+
+  if [[ -n "$CI_SERVER_IP" ]]; then
+    args="$args --server-ip $CI_SERVER_IP"
+  fi
+
+  run /bin/bash -c "dokku scheduler-k3s:initialize ${args}"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+}
+
+uninstall_k3s() {
+  run /bin/bash -c "dokku scheduler-k3s:uninstall"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
 }

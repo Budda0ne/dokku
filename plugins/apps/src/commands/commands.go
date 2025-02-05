@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dokku/dokku/plugins/apps"
 	"github.com/dokku/dokku/plugins/common"
 )
 
@@ -27,8 +28,7 @@ Additional commands:`
     apps:locked <app>, Checks if an app is locked for deployment
     apps:rename <old-app> <new-app>, Rename an app
     apps:report [<app>] [<flag>], Display report about an app
-    apps:unlock <app>, Unlocks an app for deployment
-`
+    apps:unlock <app>, Unlocks an app for deployment`
 )
 
 func main() {
@@ -37,14 +37,22 @@ func main() {
 
 	cmd := flag.Arg(0)
 	switch cmd {
-	case "apps", "apps:help":
+	case "apps":
+		args := flag.NewFlagSet("apps", flag.ExitOnError)
+		args.Usage = usage
+		args.Parse(os.Args[2:])
+
+		if err := apps.CommandList(); err != nil {
+			common.LogFailWithError(err)
+		}
+	case "apps:help":
 		usage()
 	case "help":
-		command := common.NewShellCmd(fmt.Sprintf("ps -o command= %d", os.Getppid()))
-		command.ShowOutput = false
-		output, err := command.Output()
-
-		if err == nil && strings.Contains(string(output), "--all") {
+		result, err := common.CallExecCommand(common.ExecCommandInput{
+			Command: "ps",
+			Args:    []string{"-o", "command=", strconv.Itoa(os.Getppid())},
+		})
+		if err == nil && strings.Contains(result.StdoutContents(), "--all") {
 			fmt.Println(helpContent)
 		} else {
 			fmt.Print("\n    apps, Manage apps\n")

@@ -8,8 +8,11 @@ docs
 tests
 !build/package/*
 !docs/_build/entrypoint
+!docs/_build/hooks.py
 !docs/_build/requirements.txt
 !tests/dhparam.pem
 !contrib/bash-completion
+!contrib/dependencies.json
 !contrib/docker
+!contrib/update-deb-dependencies
 vendor

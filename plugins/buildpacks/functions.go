@@ -3,6 +3,7 @@ package buildpacks
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -34,12 +35,16 @@ func rewriteBuildpacksFile(sourceWorkDir string) error {
 		buildpacks[i] = buildpack
 	}
 
-	return common.WriteSliceToFile(buildpacksPath, buildpacks)
+	return common.WriteSliceToFile(common.WriteSliceToFileInput{
+		Filename: buildpacksPath,
+		Lines:    buildpacks,
+		Mode:     os.FileMode(0600),
+	})
 }
 
 func validBuildpackURL(buildpack string) (string, error) {
 	if buildpack == "" {
-		return buildpack, errors.New("Must specify a buildpack to add")
+		return buildpack, errors.New("Must specify a buildpack url or reference")
 	}
 
 	reHerokuValue := regexp.MustCompile(`(?m)^([\w-]+\/[\w-]+)$`)

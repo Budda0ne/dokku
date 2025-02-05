@@ -25,10 +25,13 @@ func CommandDefault(appName string, num int64, process string, tail, quiet bool)
 	q := strconv.FormatBool(quiet)
 	n := strconv.FormatInt(num, 10)
 
-	if err := common.PlugnTrigger("scheduler-logs", []string{s, appName, process, t, q, n}...); err != nil {
-		return err
-	}
-	return nil
+	_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Args:               []string{s, appName, process, t, q, n},
+		DisableStdioBuffer: true,
+		StreamStdio:        true,
+		Trigger:            "scheduler-logs",
+	})
+	return err
 }
 
 // CommandFailed shows the last failed deploy logs
@@ -49,6 +52,10 @@ func CommandReport(appName string, format string, infoFlag string) error {
 	if len(appName) == 0 {
 		apps, err := common.DokkuApps()
 		if err != nil {
+			if errors.Is(err, common.NoAppsExist) {
+				common.LogWarn(err.Error())
+				return nil
+			}
 			return err
 		}
 		for _, appName := range apps {
@@ -69,7 +76,13 @@ func CommandSet(appName string, property string, value string) error {
 	}
 
 	common.CommandPropertySet("logs", appName, property, value, DefaultProperties, GlobalProperties)
-	if property == "vector-sink" {
+
+	vectorProperties := map[string]bool{
+		"app-label-alias": true,
+		"vector-sink":     true,
+	}
+
+	if _, ok := vectorProperties[property]; ok {
 		common.LogVerboseQuiet(fmt.Sprintf("Writing updated vector config to %s", filepath.Join(common.GetDataDirectory("logs"), "vector.json")))
 		return writeVectorConfig()
 	}
@@ -101,20 +114,13 @@ func CommandVectorStart(vectorImage string) error {
 		return err
 	}
 
-	if common.ContainerExists(vectorContainerName) {
-		if common.ContainerIsRunning(vectorContainerName) {
-			common.LogVerbose("Vector container is running")
-			return nil
-		}
+	if vectorImage == "" {
+		vectorImage = common.PropertyGetDefault("logs", "--global", "vector-image", getComputedVectorImage())
+	}
 
-		common.LogVerbose("Starting vector container")
-		if !common.ContainerStart(vectorContainerName) {
-			return errors.New("Unable to start vector container")
-		}
-	} else {
-		if err := startVectorContainer(vectorImage); err != nil {
-			return err
-		}
+	common.LogVerbose("Starting vector container")
+	if err := startVectorContainer(vectorImage); err != nil {
+		return err
 	}
 
 	common.LogVerbose("Waiting for 10 seconds")
@@ -128,6 +134,6 @@ func CommandVectorStart(vectorImage string) error {
 
 // CommandVectorStop stops and removes an existing vector container
 func CommandVectorStop() error {
-	common.LogInfo2Quiet("Stopping and removing vector container")
-	return killVectorContainer()
+	common.LogInfo2Quiet("Stopping and removing vector container")
+	return stopVectorContainer()
 }

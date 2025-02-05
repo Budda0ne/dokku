@@ -4,6 +4,10 @@ set -eo pipefail
 
 has_tty() {
   declare desc="return 0 if we have a tty"
+  if [[ "$DOKKU_FORCE_TTY" == "true" ]]; then
+    return 0
+  fi
+
   if [[ "$DOKKU_DISABLE_TTY" == "true" ]]; then
     return 1
   fi
@@ -199,6 +203,17 @@ dokku_container_log_verbose_quiet() {
   IFS=$OIFS
 }
 
+fn-force-arm64-image() {
+  declare IMAGE="$1"
+  local image_architecture="$("$DOCKER_BIN" image inspect --format '{{.Architecture}}' "$IMAGE")"
+
+  if [[ "$image_architecture" == "amd64" ]] && [[ "$(dpkg --print-architecture 2>/dev/null || true)" != "amd64" ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
 fn-is-valid-app-name() {
   declare desc="verify that the app name matches naming restrictions"
   local APP="$1"
@@ -220,6 +235,19 @@ fn-is-valid-app-name-old() {
     if [[ ! $APP =~ [A-Z] ]] && [[ ! $APP =~ [:] ]]; then
       return 0
     fi
+  fi
+
+  return 1
+}
+
+fn-plugn-trigger-exists() {
+  declare desc="checks if a plugn trigger exists"
+  declare TRIGGER_NAME="$1"
+  local exists
+
+  exists="$("$PLUGIN_CORE_AVAILABLE_PATH/common/common" --quiet plugn-trigger-exists "$TRIGGER_NAME" || true)"
+  if [[ "$exists" == "true" ]]; then
+    return
   fi
 
   return 1
@@ -462,10 +490,20 @@ copy_from_image() {
   declare IMAGE="$1" SRC_FILE="$2" DST_FILE="$3"
   local WORK_DIR=""
 
+  if ! "$PLUGIN_CORE_AVAILABLE_PATH/common/common" copy-from-image "$APP" "$IMAGE" "$SRC_FILE" "$DST_FILE"; then
+    return 1
+  fi
+}
+
+copy_dir_from_image() {
+  declare desc="copy a directory from named image to destination"
+  declare IMAGE="$1" SRC_DIR="$2" DST_DIR="$3"
+  local WORK_DIR=""
+
   local DOCKER_CREATE_LABEL_ARGS="--label=com.dokku.app-name=$APP"
 
   if verify_image "$IMAGE"; then
-    if ! is_abs_path "$SRC_FILE"; then
+    if ! is_abs_path "$SRC_DIR"; then
       if is_image_cnb_based "$IMAGE"; then
         WORKDIR="/workspace"
       elif is_image_herokuish_based "$IMAGE" "$APP"; then
@@ -475,32 +513,40 @@ copy_from_image() {
       fi
 
       if [[ -n "$WORKDIR" ]]; then
-        SRC_FILE="${WORKDIR}/${SRC_FILE}"
+        SRC_DIR="${WORKDIR}/${SRC_DIR}"
       fi
     fi
 
-    TMP_FILE_COMMAND_OUTPUT=$(mktemp "/tmp/dokku-${DOKKU_PID}-${FUNCNAME[0]}.XXXXXX")
-    trap "rm -rf '$TMP_FILE_COMMAND_OUTPUT' >/dev/null 2>&1 || true" RETURN
+    TMP_DIR_COMMAND_OUTPUT=$(mktemp -d "/tmp/dokku-${DOKKU_PID}-${FUNCNAME[0]}.XXXXXX")
+    trap "rm -rf '$TMP_DIR_COMMAND_OUTPUT' &>/dev/null || true" RETURN
 
     local CID=$("$DOCKER_BIN" container create "${DOCKER_CREATE_LABEL_ARGS[@]}" $DOKKU_GLOBAL_RUN_ARGS "$IMAGE")
-    "$DOCKER_BIN" container cp "$CID:$SRC_FILE" "$TMP_FILE_COMMAND_OUTPUT" 2>/dev/null || true
+    "$DOCKER_BIN" container cp "$CID:$SRC_DIR" "$TMP_DIR_COMMAND_OUTPUT" 2>/dev/null || true
     "$DOCKER_BIN" container rm --force "$CID" &>/dev/null
     plugn trigger scheduler-register-retired "$APP" "$CID"
 
     # docker cp exits with status 1 when run as non-root user when it tries to chown the file
     # after successfully copying the file. Thus, we suppress stderr.
     # ref: https://github.com/dotcloud/docker/issues/3986
-    if [[ ! -s "$TMP_FILE_COMMAND_OUTPUT" ]]; then
+    if [[ ! -d "$TMP_DIR_COMMAND_OUTPUT" ]]; then
       return 1
     fi
 
-    # workaround for CHECKS file when owner is root. seems to only happen when running inside docker
-    dos2unix -l <"$TMP_FILE_COMMAND_OUTPUT" >"$DST_FILE"
+    pushd "$TMP_DIR_COMMAND_OUTPUT" >/dev/null
+    for filename in *; do
+      if [[ ! -f "$TMP_DIR_COMMAND_OUTPUT/$filename" ]]; then
+        continue
+      fi
 
-    # add trailing newline for certain places where file parsing depends on it
-    if [[ "$(tail -c1 "$DST_FILE")" != "" ]]; then
-      echo "" >>"$DST_FILE"
-    fi
+      # workaround for CHECKS file when owner is root. seems to only happen when running inside docker
+      dos2unix -l <"$TMP_DIR_COMMAND_OUTPUT/$filename" >"$DST_DIR/$filename"
+
+      # add trailing newline for certain places where file parsing depends on it
+      if [[ "$(tail -c1 "$DST_DIR/$filename")" != "" ]]; then
+        echo "" >>"$DST_DIR/$filename"
+      fi
+    done
+    popd &>/dev/null || pushd "/tmp" >/dev/null
   else
     return 1
   fi
@@ -632,18 +678,9 @@ release_and_deploy() {
   local APP="$1"
   local IMAGE_TAG="${2:-latest}"
   local IMAGE=$(get_app_image_name "$APP" "$IMAGE_TAG")
-  local DOKKU_DOCKERFILE_PORTS
 
   if verify_image "$IMAGE"; then
     IMAGE_SOURCE_TYPE="$(get_image_builder_type "$IMAGE" "$APP")"
-    if [[ "$IMAGE_SOURCE_TYPE" == "dockerfile" ]]; then
-      DOKKU_DOCKERFILE_PORTS=$(config_get "$APP" DOKKU_DOCKERFILE_PORTS || true)
-      if [[ -z "$DOKKU_DOCKERFILE_PORTS" ]]; then
-        local DOCKER_IMAGE_PORTS=$(get_exposed_ports_from_image "$IMAGE")
-        [[ -n "$DOCKER_IMAGE_PORTS" ]] && config_set --no-restart "$APP" DOKKU_DOCKERFILE_PORTS="$DOCKER_IMAGE_PORTS"
-      fi
-    fi
-
     local DOKKU_APP_SKIP_DEPLOY="$(config_get "$APP" DOKKU_SKIP_DEPLOY || true)"
     local DOKKU_GLOBAL_SKIP_DEPLOY="$(config_get --global DOKKU_SKIP_DEPLOY || true)"
 
@@ -695,19 +732,6 @@ docker_cleanup() {
   local DOKKU_APP_SKIP_CLEANUP
 
   "$PLUGIN_CORE_AVAILABLE_PATH/common/common" --quiet docker-cleanup "$APP"
-}
-
-get_available_port() {
-  declare desc="returns first currently unused port > 1024"
-  while true; do
-    local port=$(shuf -i 1025-65535 -n 1)
-    if ! nc -z 0.0.0.0 "$port"; then
-      echo "$port"
-      return 0
-    else
-      continue
-    fi
-  done
 }
 
 dokku_auth() {
@@ -773,21 +797,6 @@ get_ipv6_regex() {
   echo "${RE_IPV6}\$"
 }
 
-get_dockerfile_exposed_ports() {
-  declare desc="return all exposed ports from passed file path"
-  local DOCKERFILE_PORTS=$(grep -E "^EXPOSE " "$1" | awk '{ print $2 }' | xargs) || true
-  echo "$DOCKERFILE_PORTS"
-}
-
-get_exposed_ports_from_image() {
-  declare desc="return all exposed ports from passed image name"
-  local IMAGE="$1"
-  verify_image "$IMAGE"
-  # shellcheck disable=SC2016
-  local DOCKER_IMAGE_EXPOSED_PORTS="$("$DOCKER_BIN" image inspect --format '{{range $key, $value := .Config.ExposedPorts}}{{$key}} {{end}}' "$IMAGE")"
-  echo "$DOCKER_IMAGE_EXPOSED_PORTS"
-}
-
 get_entrypoint_from_image() {
   declare desc="return .Config.Entrypoint from passed image name"
   local IMAGE="$1"
@@ -811,22 +820,6 @@ extract_directive_from_dockerfile() {
   local SEARCH_STRING="$2"
   local FOUND_LINE=$(grep -E "^${SEARCH_STRING} " "$FILE_PATH" | tail -n1) || true
   echo "$FOUND_LINE"
-}
-
-get_app_raw_tcp_ports() {
-  declare desc="extracts raw tcp port numbers from DOCKERFILE_PORTS config variable"
-  source "$PLUGIN_AVAILABLE_PATH/config/functions"
-
-  local APP="$1"
-  local DOCKERFILE_PORTS="$(config_get "$APP" DOKKU_DOCKERFILE_PORTS)"
-  for p in $DOCKERFILE_PORTS; do
-    if [[ ! "$p" =~ .*udp.* ]]; then
-      p=${p//\/tcp/}
-      raw_tcp_ports+="$p "
-    fi
-  done
-  local raw_tcp_ports="$(echo "$raw_tcp_ports" | xargs)"
-  echo "$raw_tcp_ports"
 }
 
 get_container_ports() {
@@ -912,7 +905,7 @@ acquire_app_deploy_lock() {
   declare desc="acquire advisory lock for use in deploys"
   local APP="$1"
   local LOCK_TYPE="${2:-waiting}"
-  local APP_DEPLOY_LOCK_FILE="$DOKKU_ROOT/$APP/.deploy.lock"
+  local APP_DEPLOY_LOCK_FILE="$DOKKU_LIB_ROOT/data/apps/$APP/.deploy.lock"
   local LOCK_WAITING_MSG="$APP currently has a deploy lock in place. Waiting..."
   local LOCK_FAILED_MSG="$APP currently has a deploy lock in place. Exiting..."
 
@@ -922,7 +915,7 @@ acquire_app_deploy_lock() {
 release_app_deploy_lock() {
   declare desc="release advisory lock used in deploys"
   local APP="$1"
-  local APP_DEPLOY_LOCK_FILE="$DOKKU_ROOT/$APP/.deploy.lock"
+  local APP_DEPLOY_LOCK_FILE="$DOKKU_LIB_ROOT/data/apps/$APP/.deploy.lock"
 
   release_advisory_lock "$APP_DEPLOY_LOCK_FILE"
 }
@@ -951,6 +944,7 @@ acquire_advisory_lock() {
       dokku_log_fail "Run 'apps:unlock' to release the existing deploy lock"
     fi
   fi
+  echo "$DOKKU_PID" >"$LOCK_FILE"
 }
 
 release_advisory_lock() {
@@ -965,13 +959,14 @@ suppress_output() {
   declare desc="suppress all output from a given command unless there is an error"
   local TMP_COMMAND_OUTPUT
   TMP_COMMAND_OUTPUT=$(mktemp "/tmp/dokku-${DOKKU_PID}-${FUNCNAME[0]}.XXXXXX")
-  trap "rm -rf '$TMP_COMMAND_OUTPUT' >/dev/null" RETURN
 
   "$@" >"$TMP_COMMAND_OUTPUT" 2>&1 || {
     local exit_code="$?"
     cat "$TMP_COMMAND_OUTPUT"
+    rm -rf "$TMP_COMMAND_OUTPUT" >/dev/null
     return "$exit_code"
   }
+  rm -rf "$TMP_COMMAND_OUTPUT" >/dev/null
   return 0
 }
 

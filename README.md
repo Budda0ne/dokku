@@ -1,6 +1,6 @@
 # Dokku
 
-[![Build Status](https://github.com/dokku/dokku/workflows/CI/badge.svg)](https://github.com/dokku/dokku/actions?query=workflow%3ACI)
+[![Build Status](https://github.com/dokku/dokku/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/dokku/dokku/actions?query=branch%3Amaster)
 [![Ubuntu Package](https://img.shields.io/badge/package-ubuntu-brightgreen.svg?style=flat-square "Ubuntu Package")](https://packagecloud.io/dokku/dokku)
 [![Arch Package](https://img.shields.io/badge/package-arch-brightgreen.svg?style=flat-square "Arch Package")](https://aur.archlinux.org/packages/dokku/)
 [![Slack Group](https://img.shields.io/badge/irc-slack-blue.svg?style=flat-square "Slack Group")](https://slack.dokku.com/)
@@ -74,9 +74,8 @@ Support us with a monthly donation and help us continue our activities. [[Become
 
 A fresh VM running any of the following operating systems:
 
-- Ubuntu 20.04 / 22.04 x64 - Any currently supported release
-- Debian 10+ x64
-- Arch Linux x64 *(experimental)*
+- Ubuntu 20.04 / 22.04 / 24.04 (amd64/arm64) - Any currently supported release
+- Debian 11+ (amd64/arm64)
 
 An SSH keypair that can be used for application deployment. If this exists before installation, it will be automatically imported into dokku.
 Otherwise, you will need to import the keypair manually after installation using `dokku ssh-keys:add`.
@@ -86,8 +85,8 @@ Otherwise, you will need to import the keypair manually after installation using
 To install the latest stable release, run the following commands as a user who has access to `sudo`:
 
 ```shell
-wget -NP . https://dokku.com/install/v0.30.7/bootstrap.sh
-sudo DOKKU_TAG=v0.30.7 bash bootstrap.sh
+wget -NP . https://dokku.com/install/v0.35.15/bootstrap.sh
+sudo DOKKU_TAG=v0.35.15 bash bootstrap.sh
 ```
 
 You can then proceed to configure your server domain (via `dokku domains:set-global`) and user access (via `dokku ssh-keys:add`) to complete the installation.

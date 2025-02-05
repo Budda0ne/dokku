@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,6 +25,12 @@ func CommandPropertySet(pluginName, appName, property, value string, properties 
 		LogFail("No property specified")
 	}
 
+	for k := range globalProperties {
+		if _, ok := properties[k]; !ok {
+			properties[k] = ""
+		}
+	}
+
 	if _, ok := properties[property]; !ok {
 		properties := reflect.ValueOf(properties).MapKeys()
 		validPropertyList := make([]string, len(properties))
@@ -39,7 +44,9 @@ func CommandPropertySet(pluginName, appName, property, value string, properties 
 
 	if value != "" {
 		LogInfo2Quiet(fmt.Sprintf("Setting %s to %s", property, value))
-		PropertyWrite(pluginName, appName, property, value)
+		if err := PropertyWrite(pluginName, appName, property, value); err != nil {
+			LogFailWithError(err)
+		}
 	} else {
 		LogInfo2Quiet(fmt.Sprintf("Unsetting %s", property))
 		if err := PropertyDelete(pluginName, appName, property); err != nil {
@@ -115,7 +122,7 @@ func PropertyGetAll(pluginName string, appName string) (map[string]string, error
 		return properties, errors.New("Specified property path is not a directory")
 	}
 
-	files, err := ioutil.ReadDir(pluginAppConfigRoot)
+	files, err := os.ReadDir(pluginAppConfigRoot)
 	if err != nil {
 		return properties, err
 	}
@@ -131,6 +138,40 @@ func PropertyGetAll(pluginName string, appName string) (map[string]string, error
 	return properties, nil
 }
 
+// PropertyGetAllByPrefix returns a map of all properties for a given app with a specified prefix
+func PropertyGetAllByPrefix(pluginName string, appName string, prefix string) (map[string]string, error) {
+	properties := make(map[string]string)
+	pluginAppConfigRoot := getPluginAppPropertyPath(pluginName, appName)
+
+	fi, err := os.Stat(pluginAppConfigRoot)
+	if err != nil {
+		return properties, nil
+	}
+
+	if !fi.IsDir() {
+		return properties, errors.New("Specified property path is not a directory")
+	}
+
+	files, err := os.ReadDir(pluginAppConfigRoot)
+	if err != nil {
+		return properties, err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		property := file.Name()
+		if !strings.HasPrefix(property, prefix) {
+			continue
+		}
+
+		properties[property] = PropertyGet(pluginName, appName, property)
+	}
+
+	return properties, nil
+}
+
 // PropertyGetDefault returns the value for a given property with a specified default value
 func PropertyGetDefault(pluginName, appName, property, defaultValue string) (val string) {
 	if !PropertyExists(pluginName, appName, property) {
@@ -139,7 +180,7 @@ func PropertyGetDefault(pluginName, appName, property, defaultValue string) (val
 	}
 
 	propertyPath := getPropertyPath(pluginName, appName, property)
-	b, err := ioutil.ReadFile(propertyPath)
+	b, err := os.ReadFile(propertyPath)
 	if err != nil {
 		LogWarn(fmt.Sprintf("Unable to read %s property %s.%s", pluginName, appName, property))
 		return
@@ -196,8 +237,17 @@ func PropertyListWrite(pluginName string, appName string, property string, value
 		return fmt.Errorf("Unable to write %s config value %s.%s: %s", pluginName, appName, property, err.Error())
 	}
 
-	file.Chmod(0600)
-	SetPermissions(propertyPath, 0600)
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("Unable to close %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
+
+	if err := SetPermissions(SetPermissionInput{
+		Filename: propertyPath,
+		Mode:     os.FileMode(0600),
+	}); err != nil {
+		return fmt.Errorf("Unable to set permissions for %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
+
 	return nil
 }
 
@@ -323,8 +373,16 @@ func PropertyListRemove(pluginName string, appName string, property string, valu
 		return fmt.Errorf("Unable to write %s config value %s.%s: %s", pluginName, appName, property, err.Error())
 	}
 
-	file.Chmod(0600)
-	SetPermissions(propertyPath, 0600)
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("Unable to close %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
+
+	if err := SetPermissions(SetPermissionInput{
+		Filename: propertyPath,
+		Mode:     os.FileMode(0600),
+	}); err != nil {
+		return fmt.Errorf("Unable to set permissions for %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
 
 	if !found {
 		return errors.New("Property not found, nothing was removed")
@@ -359,8 +417,16 @@ func PropertyListRemoveByPrefix(pluginName string, appName string, property stri
 		return fmt.Errorf("Unable to write %s config value %s.%s: %s", pluginName, appName, property, err.Error())
 	}
 
-	file.Chmod(0600)
-	SetPermissions(propertyPath, 0600)
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("Unable to close %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
+
+	if err := SetPermissions(SetPermissionInput{
+		Filename: propertyPath,
+		Mode:     os.FileMode(0600),
+	}); err != nil {
+		return fmt.Errorf("Unable to set permissions for %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
 
 	if !found {
 		return errors.New("Property not found, nothing was removed")
@@ -384,9 +450,7 @@ func PropertyListSet(pluginName string, appName string, property string, value s
 
 	var lines []string
 	if index >= len(scannedLines) {
-		for _, line := range scannedLines {
-			lines = append(lines, line)
-		}
+		lines = append(lines, scannedLines...)
 		lines = append(lines, value)
 	} else {
 		for i, line := range scannedLines {
@@ -435,8 +499,18 @@ func PropertyWrite(pluginName string, appName string, property string, value str
 	defer file.Close()
 
 	fmt.Fprint(file, value)
-	file.Chmod(0600)
-	SetPermissions(propertyPath, 0600)
+
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("Unable to close %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
+
+	if err := SetPermissions(SetPermissionInput{
+		Filename: propertyPath,
+		Mode:     os.FileMode(0600),
+	}); err != nil {
+		return fmt.Errorf("Unable to set permissions for %s config value %s.%s: %s", pluginName, appName, property, err.Error())
+	}
+
 	return nil
 }
 
@@ -446,10 +520,19 @@ func PropertySetup(pluginName string) error {
 	if err := os.MkdirAll(pluginConfigRoot, 0755); err != nil {
 		return err
 	}
-	if err := SetPermissions(filepath.Join(MustGetEnv("DOKKU_LIB_ROOT"), "config"), 0755); err != nil {
+
+	input := SetPermissionInput{
+		Filename: filepath.Join(MustGetEnv("DOKKU_LIB_ROOT"), "config"),
+		Mode:     os.FileMode(0755),
+	}
+
+	if err := SetPermissions(input); err != nil {
 		return err
 	}
-	return SetPermissions(pluginConfigRoot, 0755)
+	return SetPermissions(SetPermissionInput{
+		Filename: pluginConfigRoot,
+		Mode:     os.FileMode(0755),
+	})
 }
 
 func getPropertyPath(pluginName string, appName string, property string) string {
@@ -473,5 +556,8 @@ func makePluginAppPropertyPath(pluginName string, appName string) error {
 	if err := os.MkdirAll(pluginAppConfigRoot, 0755); err != nil {
 		return err
 	}
-	return SetPermissions(pluginAppConfigRoot, 0755)
+	return SetPermissions(SetPermissionInput{
+		Filename: pluginAppConfigRoot,
+		Mode:     os.FileMode(0755),
+	})
 }

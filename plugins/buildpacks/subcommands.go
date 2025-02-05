@@ -65,7 +65,7 @@ func CommandRemove(appName string, buildpack string, index int) (err error) {
 	}
 
 	buildpack, err = validBuildpackURL(buildpack)
-	if err != nil {
+	if index == 0 && err != nil {
 		return err
 	}
 
@@ -108,6 +108,10 @@ func CommandReport(appName string, format string, infoFlag string) error {
 	if len(appName) == 0 {
 		apps, err := common.DokkuApps()
 		if err != nil {
+			if errors.Is(err, common.NoAppsExist) {
+				common.LogWarn(err.Error())
+				return nil
+			}
 			return err
 		}
 		for _, appName := range apps {
@@ -149,7 +153,12 @@ func CommandSetProperty(appName string, property string, value string) error {
 	common.CommandPropertySet("buildpacks", appName, property, value, DefaultProperties, GlobalProperties)
 	if property == "stack" && oldStack != value {
 		if appName != "--global" {
-			return common.PlugnTrigger("post-stack-set", []string{appName, value}...)
+			_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+				Trigger:     "post-stack-set",
+				Args:        []string{appName, value},
+				StreamStdio: true,
+			})
+			return err
 		}
 
 		apps, err := common.DokkuApps()
@@ -157,7 +166,12 @@ func CommandSetProperty(appName string, property string, value string) error {
 			return err
 		}
 		for _, app := range apps {
-			if err := common.PlugnTrigger("post-stack-set", []string{app, value}...); err != nil {
+			_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+				Trigger:     "post-stack-set",
+				Args:        []string{app, value},
+				StreamStdio: true,
+			})
+			if err != nil {
 				return err
 			}
 		}

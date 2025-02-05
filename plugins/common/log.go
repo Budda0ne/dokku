@@ -2,10 +2,13 @@ package common
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/hashicorp/go-multierror"
 )
 
 // ErrWithExitCode wraps error and exposes an ExitCode method
@@ -44,6 +47,30 @@ func (w *writer) Write(bytes []byte) (int, error) {
 	return len(bytes), nil
 }
 
+// PrefixingWriter is a writer that prefixes all writes with a given prefix
+type PrefixingWriter struct {
+	Prefix []byte
+	Writer io.Writer
+}
+
+// Write writes the given bytes to the writer with the prefix
+func (pw *PrefixingWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	// Perform an "atomic" write of a prefix and p to make sure that it doesn't interleave
+	// sub-line when used concurrently with io.PipeWrite.
+	n, err := pw.Writer.Write(append(pw.Prefix, p...))
+	if n > len(p) {
+		// To comply with the io.Writer interface requirements we must
+		// return a number of bytes written from p (0 <= n <= len(p)),
+		// so we are ignoring the length of the prefix here.
+		return len(p), err
+	}
+	return n, err
+}
+
 // LogFail is the failure log formatter
 // prints text to stderr and exits with status 1
 func LogFail(text string) {
@@ -54,7 +81,17 @@ func LogFail(text string) {
 // LogFailWithError is the failure log formatter
 // prints text to stderr and exits with the specified exit code
 func LogFailWithError(err error) {
-	fmt.Fprintln(os.Stderr, fmt.Sprintf(" !     %s", err.Error()))
+	if err == nil {
+		return
+	}
+
+	if merr, ok := err.(*multierror.Error); ok {
+		for _, e := range merr.Errors {
+			fmt.Fprintf(os.Stderr, " !     %s\n", e.Error())
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, " !     %s\n", err.Error())
+	}
 	if errExit, ok := err.(ErrWithExitCode); ok {
 		os.Exit(errExit.ExitCode())
 	}
@@ -162,22 +199,27 @@ func LogVerboseQuietContainerLogsTail(containerID string, lines int, tail bool) 
 		args = append(args, "--follow")
 	}
 
-	sc := NewShellCmdWithArgs(DockerBin(), args...)
 	var mu sync.Mutex
-	sc.Command.Stdout = &writer{
-		mu:     &mu,
-		source: "stdout",
-	}
-	sc.Command.Stderr = &writer{
-		mu:     &mu,
-		source: "stderr",
-	}
+	result, err := CallExecCommand(ExecCommandInput{
+		Command:            DockerBin(),
+		Args:               args,
+		DisableStdioBuffer: true,
+		StdoutWriter: &writer{
+			mu:     &mu,
+			source: "stdout",
+		},
+		StderrWriter: &writer{
+			mu:     &mu,
+			source: "stderr",
+		},
+	})
 
-	if err := sc.Command.Start(); err != nil {
+	if err != nil {
 		LogExclaim(fmt.Sprintf("Failed to fetch container logs: %s", containerID))
+		return
 	}
 
-	if err := sc.Command.Wait(); err != nil {
+	if !tail && result.ExitCode != 0 {
 		LogExclaim(fmt.Sprintf("Failed to fetch container logs: %s", containerID))
 	}
 }

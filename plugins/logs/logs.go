@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"embed"
 	"fmt"
 
 	"github.com/dokku/dokku/plugins/common"
@@ -9,32 +10,46 @@ import (
 // MaxSize is the default max retention size for docker logs
 const MaxSize = "10m"
 
+// AppLabelAlias is the property key for the app label alias
+const AppLabelAlias = "com.dokku.app-name"
+
 var (
 	// DefaultProperties is a map of all valid logs properties with corresponding default property values
 	DefaultProperties = map[string]string{
-		"max-size":    "",
-		"vector-sink": "",
+		"app-label-alias": AppLabelAlias,
+		"max-size":        MaxSize,
+		"vector-sink":     "",
 	}
 
 	// GlobalProperties is a map of all valid global logs properties
 	GlobalProperties = map[string]bool{
-		"max-size":    true,
-		"vector-sink": true,
+		"app-label-alias": true,
+		"max-size":        true,
+		"vector-image":    true,
+		"vector-sink":     true,
 	}
 )
 
-// VectorImage contains the default vector image to run
-const VectorImage = "timberio/vector:0.23.X-debian"
+// VectorDockerfile is the contents of the default Dockerfile
+// containing the version of vector Dokku uses
+//
+//go:embed Dockerfile
+var VectorDockerfile string
 
 // VectorDefaultSink contains the default sink in use for vector log shipping
 const VectorDefaultSink = "blackhole://?print_interval_secs=1"
 
+//go:embed templates/*
+var templates embed.FS
+
 // GetFailedLogs outputs failed deploy logs for a given app
 func GetFailedLogs(appName string) error {
 	common.LogInfo2Quiet(fmt.Sprintf("%s failed deploy logs", appName))
-	s := common.GetAppScheduler(appName)
-	if err := common.PlugnTrigger("scheduler-logs-failed", s, appName); err != nil {
-		return err
-	}
-	return nil
+	scheduler := common.GetAppScheduler(appName)
+	_, err := common.CallPlugnTrigger(common.PlugnTriggerInput{
+		Trigger:     "scheduler-logs-failed",
+		Args:        []string{scheduler, appName},
+		StreamStdio: true,
+	})
+	return err
 }

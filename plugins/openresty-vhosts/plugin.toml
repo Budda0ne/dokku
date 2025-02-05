@@ -1,0 +1,4 @@
+[plugin]
+description = "dokku core openresty-vhosts plugin"
+version = "0.35.15"
+[plugin.config]

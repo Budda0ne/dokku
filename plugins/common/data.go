@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/otiai10/copy"
 )
 
 // CreateAppDataDirectory creates a data directory for the given plugin/app combination with the correct permissions
@@ -15,11 +13,10 @@ func CreateAppDataDirectory(pluginName, appName string) error {
 		return err
 	}
 
-	if err := SetPermissions(directory, 0755); err != nil {
-		return err
-	}
-
-	return nil
+	return SetPermissions(SetPermissionInput{
+		Filename: directory,
+		Mode:     os.FileMode(0755),
+	})
 }
 
 // CreateDataDirectory creates a data directory for the given plugin/app combination with the correct permissions
@@ -29,11 +26,10 @@ func CreateDataDirectory(pluginName string) error {
 		return err
 	}
 
-	if err := SetPermissions(directory, 0755); err != nil {
-		return err
-	}
-
-	return nil
+	return SetPermissions(SetPermissionInput{
+		Filename: directory,
+		Mode:     os.FileMode(0755),
+	})
 }
 
 // GetAppDataDirectory returns the path to the data directory for the given plugin/app combination
@@ -68,7 +64,7 @@ func CloneAppData(pluginName string, oldAppName string, newAppName string) error
 	}
 
 	newDataDir := GetAppDataDirectory(pluginName, newAppName)
-	if err := copy.Copy(oldDataDir, newDataDir); err != nil {
+	if err := Copy(oldDataDir, newDataDir); err != nil {
 		return fmt.Errorf("Unable to clone app data to new location: %v", err.Error())
 	}
 

@@ -25,18 +25,17 @@ teardown() {
   echo "status: $status"
   assert_success
 
-  run /bin/bash -c "dokku buildpacks:set-property $TEST_APP stack heroku/buildpacks:20"
+  run /bin/bash -c "dokku buildpacks:set-property $TEST_APP stack heroku/builder:24"
   echo "output: $output"
   echo "status: $status"
   assert_success
 
-  run deploy_app python dokku@dokku.me:$TEST_APP inject_requirements_txt
+  run deploy_app python dokku@$DOKKU_DOMAIN:$TEST_APP initialize_for_cnb
   echo "output: $output"
   echo "status: $status"
   assert_success
   assert_output_contains 'Building with buildpack 1' 0
-  assert_output_contains 'Installing requirements with pip'
-  assert_output_contains "Build time env var SECRET_KEY=fjdkslafjdk"
+  assert_output_contains 'Installing dependencies using pip'
 
   run /bin/bash -c "dokku builder-pack:set $TEST_APP projecttoml-path nonexistent.toml"
   echo "output: $output"
@@ -48,7 +47,7 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output_contains 'Building with buildpack 1' 0
-  assert_output_contains 'Installing requirements with pip'
+  assert_output_contains 'Installing dependencies using pip'
 
   run /bin/bash -c "dokku builder-pack:set $TEST_APP projecttoml-path project2.toml"
   echo "output: $output"
@@ -60,7 +59,7 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output_contains 'Building with buildpack 1'
-  assert_output_contains 'Installing requirements with pip' 0
+  assert_output_contains 'Installing dependencies using pip' 0
 
   run /bin/bash -c "dokku builder-pack:set $TEST_APP projecttoml-path"
   echo "output: $output"
@@ -72,7 +71,7 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output_contains 'Building with buildpack 1' 0
-  assert_output_contains 'Installing requirements with pip'
+  assert_output_contains 'Installing dependencies using pip'
 }
 
 @test "(builder-pack) git:from-image without a Procfile" {
@@ -82,9 +81,10 @@ teardown() {
   assert_success
 }
 
-inject_requirements_txt() {
+initialize_for_cnb() {
   local APP="$1"
   local APP_REPO_DIR="$2"
   [[ -z "$APP" ]] && local APP="$TEST_APP"
   echo "flask" >>"$APP_REPO_DIR/requirements.txt"
+  mv "$APP_REPO_DIR/app-cnb.json" "$APP_REPO_DIR/app.json"
 }

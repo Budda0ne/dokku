@@ -2,23 +2,16 @@ DOKKU_VERSION ?= master
 
 TARGETARCH ?= amd64
 
-DOCKER_IMAGE_LABELER_VERSION ?= 0.5.0
-HEROKUISH_VERSION ?= 0.5.38
-LAMBDA_BUILDER_VERSION ?= 0.4.0
-NETRC_VERSION ?= 0.6.0
-PLUGN_VERSION ?= 0.12.0
-PROCFILE_VERSION ?= 0.15.0
-SIGIL_VERSION ?= 0.9.0
-SSHCOMMAND_VERSION ?= 0.16.0
-DOCKER_IMAGE_LABELER_URL ?= https://github.com/dokku/docker-image-labeler/releases/download/v${DOCKER_IMAGE_LABELER_VERSION}/docker-image-labeler_${DOCKER_IMAGE_LABELER_VERSION}_linux_${TARGETARCH}.tgz
-LAMBDA_BUILDER_URL ?= https://github.com/dokku/lambda-builder/releases/download/v${LAMBDA_BUILDER_VERSION}/lambda-builder_${LAMBDA_BUILDER_VERSION}_linux_${TARGETARCH}.tgz
-NETRC_URL ?= https://github.com/dokku/netrc/releases/download/v${NETRC_VERSION}/netrc_${NETRC_VERSION}_linux_${TARGETARCH}.tgz
-PLUGN_URL ?= https://github.com/dokku/plugn/releases/download/v${PLUGN_VERSION}/plugn_${PLUGN_VERSION}_linux_${TARGETARCH}.tgz
-PROCFILE_UTIL_URL ?= https://github.com/josegonzalez/go-procfile-util/releases/download/v${PROCFILE_VERSION}/procfile-util_${PROCFILE_VERSION}_linux_${TARGETARCH}.tgz
-SIGIL_URL ?= https://github.com/gliderlabs/sigil/releases/download/v${SIGIL_VERSION}/gliderlabs-sigil_${SIGIL_VERSION}_linux_${TARGETARCH}.tgz
-SSHCOMMAND_URL ?= https://github.com/dokku/sshcommand/releases/download/v${SSHCOMMAND_VERSION}/sshcommand_${SSHCOMMAND_VERSION}_linux_x86_64.tgz
+DOCKER_IMAGE_LABELER_URL ?= $(shell jq -r --arg name docker-image-labeler --arg arch $(TARGETARCH) '.dependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+DOCKER_CONTAINER_HEALTHCHECKER_URL ?= $(shell jq -r --arg name docker-container-healthchecker  --arg arch $(TARGETARCH) '.dependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+LAMBDA_BUILDER_URL ?= $(shell jq -r --arg name lambda-builder  --arg arch $(TARGETARCH) '.dependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+NETRC_URL ?= $(shell jq -r --arg name netrc  --arg arch $(TARGETARCH) '.dependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+PLUGN_URL ?= $(shell jq -r --arg name plugn  --arg arch $(TARGETARCH) '.predependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+PROCFILE_UTIL_URL ?= $(shell jq -r --arg name procfile-util  --arg arch $(TARGETARCH) '.dependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+SIGIL_URL ?= $(shell jq -r --arg name gliderlabs-sigil  --arg arch $(TARGETARCH) '.predependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
+SSHCOMMAND_URL ?= $(shell jq -r --arg name sshcommand  --arg arch $(TARGETARCH) '.dependencies[] | select(.name == $$name) | .urls[$$arch]' contrib/dependencies.json)
 STACK_URL ?= https://github.com/gliderlabs/herokuish.git
-PREBUILT_STACK_URL ?= gliderlabs/herokuish:latest-20
+PREBUILT_STACK_URL ?= gliderlabs/herokuish:latest-24
 DOKKU_LIB_ROOT ?= /var/lib/dokku
 PLUGINS_PATH ?= ${DOKKU_LIB_ROOT}/plugins
 CORE_PLUGINS_PATH ?= ${DOKKU_LIB_ROOT}/core-plugins
@@ -61,7 +54,7 @@ go-build:
 	basedir=$(PWD); \
 	for dir in plugins/*; do \
 		if [ -e $$dir/Makefile ]; then \
-			$(MAKE) -e -C $$dir $(PLUGIN_MAKE_TARGET) || exit $$? ;\
+			GO_ARGS='$(GO_ARGS)' CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) GOWORK=off $(MAKE) -e -C $$dir $(PLUGIN_MAKE_TARGET) || exit $$? ;\
 		fi ;\
 	done
 
@@ -71,7 +64,7 @@ ifndef PLUGIN_NAME
 	$(error PLUGIN_NAME not specified)
 endif
 	if [ -e plugins/$(PLUGIN_NAME)/Makefile ]; then \
-		$(MAKE) -e -C plugins/$(PLUGIN_NAME) $(PLUGIN_MAKE_TARGET) || exit $$? ;\
+		GO_ARGS='$(GO_ARGS)' CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) GOWORK=off $(MAKE) -e -C plugins/$(PLUGIN_NAME) $(PLUGIN_MAKE_TARGET) || exit $$? ;\
 	fi
 
 go-clean:
@@ -82,9 +75,12 @@ go-clean:
 		fi ;\
 	done
 
-copyfiles:
-	$(MAKE) go-build || exit 1
+copydokku:
 	cp dokku /usr/local/bin/dokku
+	chmod 0755 /usr/local/bin/dokku
+
+copyfiles: copydokku
+	$(MAKE) go-build || exit 1
 	mkdir -p ${CORE_PLUGINS_PATH} ${PLUGINS_PATH}
 	rm -rf ${CORE_PLUGINS_PATH}/*
 	test -d ${CORE_PLUGINS_PATH}/enabled || PLUGIN_PATH=${CORE_PLUGINS_PATH} plugn init
@@ -135,7 +131,7 @@ plugin-dependencies: plugn procfile-util
 plugins: plugn procfile-util docker
 	sudo -E dokku plugin:install --core
 
-dependencies: apt-update docker-image-labeler lambda-builder netrc sshcommand plugn procfile-util docker help2man man-db sigil dos2unix jq parallel
+dependencies: apt-update jq docker-image-labeler docker-container-healthchecker lambda-builder netrc sshcommand plugn procfile-util docker help2man man-db sigil dos2unix parallel
 	$(MAKE) -e stack
 
 apt-update:
@@ -157,38 +153,36 @@ man-db:
 	apt-get -qq -y --no-install-recommends install man-db
 
 docker-image-labeler:
-	wget -qO /tmp/docker-image-labeler_latest.tgz ${DOCKER_IMAGE_LABELER_URL}
-	tar xzf /tmp/docker-image-labeler_latest.tgz -C /usr/local/bin
-	mv /usr/local/bin/docker-image-labeler-${TARGETARCH} /usr/local/bin/docker-image-labeler
+	wget -qO /usr/local/bin/docker-image-labeler ${DOCKER_IMAGE_LABELER_URL}
+	chmod +x /usr/local/bin/docker-image-labeler
+
+docker-container-healthchecker:
+	wget -qO /usr/local/bin/docker-container-healthchecker ${DOCKER_CONTAINER_HEALTHCHECKER_URL}
+	chmod +x /usr/local/bin/docker-container-healthchecker
 
 lambda-builder:
-	wget -qO /tmp/lambda-builder_latest.tgz ${LAMBDA_BUILDER_URL}
-	tar xzf /tmp/lambda-builder_latest.tgz -C /usr/local/bin
-	mv /usr/local/bin/lambda-builder-${TARGETARCH} /usr/local/bin/lambda-builder
+	wget -qO /usr/local/bin/lambda-builder ${LAMBDA_BUILDER_URL}
+	chmod +x /usr/local/bin/lambda-builder
 
 netrc:
-	wget -qO /tmp/netrc_latest.tgz ${NETRC_URL}
-	tar xzf /tmp/netrc_latest.tgz -C /usr/local/bin
-	mv /usr/local/bin/netrc-${TARGETARCH} /usr/local/bin/netrc
+	wget -qO /usr/local/bin/netrc ${NETRC_URL}
+	chmod +x /usr/local/bin/netrc
 
 procfile-util:
-	wget -qO /tmp/procfile-util_latest.tgz ${PROCFILE_UTIL_URL}
-	tar xzf /tmp/procfile-util_latest.tgz -C /usr/local/bin
-	mv /usr/local/bin/procfile-util-${TARGETARCH} /usr/local/bin/procfile-util
+	wget -qO /usr/local/bin/procfile-util ${PROCFILE_UTIL_URL}
+	chmod +x /usr/local/bin/procfile-util
 
 plugn:
-	wget -qO /tmp/plugn_latest.tgz ${PLUGN_URL}
-	tar xzf /tmp/plugn_latest.tgz -C /usr/local/bin
-	mv /usr/local/bin/plugn-${TARGETARCH} /usr/local/bin/plugn
+	wget -qO /usr/local/bin/plugn ${PLUGN_URL}
+	chmod +x /usr/local/bin/plugn
 
 sigil:
-	wget -qO /tmp/sigil_latest.tgz ${SIGIL_URL}
-	tar xzf /tmp/sigil_latest.tgz -C /usr/local/bin
-	mv /usr/local/bin/gliderlabs-sigil-${TARGETARCH} /usr/local/bin/sigil
+	wget -qO /usr/local/bin/sigil ${SIGIL_URL}
+	chmod +x /usr/local/bin/sigil
 
 sshcommand:
-	wget -qO /tmp/sshcommand_latest.tgz ${SSHCOMMAND_URL}
-	tar xzf /tmp/sshcommand_latest.tgz -C /usr/local/bin
+	wget -qO /usr/local/bin/sshcommand ${SSHCOMMAND_URL}
+	chmod +x /usr/local/bin/sshcommand
 	sshcommand create dokku /usr/local/bin/dokku
 
 docker:

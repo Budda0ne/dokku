@@ -27,8 +27,15 @@ teardown() {
 }
 
 @test "(ps) ps:inspect" {
-  dokku config:set "$TEST_APP" key=value key=value=value
-  deploy_app dockerfile
+  run /bin/bash -c "dokku config:set $TEST_APP key=value key=value=value"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run deploy_app dockerfile
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
 
   CID=$(<$DOKKU_ROOT/$TEST_APP/CONTAINER.web.1)
   run /bin/bash -c "dokku ps:inspect $TEST_APP"
@@ -36,6 +43,54 @@ teardown() {
   echo "status: $status"
   assert_success
   assert_output_contains "$CID" 6
+}
+
+@test "(ps:set) procfile" {
+  run /bin/bash -c "dokku ps:set --global procfile-path .dokku/Procfile"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku ps:report $TEST_APP --ps-computed-procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output ".dokku/Procfile"
+  assert_success
+
+  run /bin/bash -c "dokku ps:report $TEST_APP --ps-global-procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output ".dokku/Procfile"
+  assert_success
+
+  run /bin/bash -c "dokku ps:report $TEST_APP --ps-procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output ""
+  assert_success
+
+  run /bin/bash -c "dokku ps:set --global procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku ps:report $TEST_APP --ps-computed-procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output "Procfile"
+  assert_success
+
+  run /bin/bash -c "dokku ps:report $TEST_APP --ps-global-procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output "Procfile"
+  assert_success
+
+  run /bin/bash -c "dokku ps:report $TEST_APP --ps-procfile-path"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output ""
+  assert_success
 }
 
 @test "(ps:scale) procfile commands extraction" {
@@ -56,7 +111,7 @@ EOF
 }
 
 @test "(ps:scale) update formations from Procfile" {
-  local TMP=$(mktemp -d "/tmp/dokku.me.XXXXX")
+  local TMP=$(mktemp -d "/tmp/${DOKKU_DOMAIN}.XXXXX")
   trap 'popd &>/dev/null || true; rm -rf "$TMP"' INT TERM
 
   CUSTOM_TMP="$TMP" deploy_app nodejs-express
@@ -64,6 +119,7 @@ EOF
   run /bin/bash -c "dokku --quiet ps:scale $TEST_APP"
   output=$(echo "$output" | tr -s " ")
   echo "output: ($output)"
+  echo "status: $status"
   assert_output $'cron: 0\ncustom: 0\nrelease: 0\nweb: 1\nworker: 0'
 
   pushd $TMP
@@ -74,10 +130,30 @@ EOF
   run /bin/bash -c "dokku --quiet ps:scale $TEST_APP"
   output=$(echo "$output" | tr -s " ")
   echo "output: ($output)"
+  echo "status: $status"
   assert_output $'cron: 0\ncustom: 0\nrelease: 0\nscaletest: 0\nweb: 1\nworker: 0'
 
   popd
   rm -rf "$TMP"
+}
+
+@test "(ps:scale) ps:scale formatting" {
+  echo "web=4
+worker=1
+beat                                                                            =0
+web                                                                             =0" >/var/lib/dokku/config/ps/$TEST_APP/scale
+
+  run /bin/bash -c "dokku --quiet ps:scale $TEST_APP"
+  echo "output: $output"
+  echo "status: $status"
+  assert_output $'beat: 0\nweb:  4\nworker: 1'
+}
+
+@test "(ps) handle windows newlines in procfile" {
+  run deploy_app python dokku@$DOKKU_DOMAIN:$TEST_APP procfile_line_endings_to_windows
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
 }
 
 @test "(ps:restart-policy) default policy" {
@@ -113,11 +189,27 @@ EOF
   echo "status: $status"
   assert_output "$test_restart_policy"
 
-  deploy_app dockerfile
+  run deploy_app dockerfile
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
 
   CID=$(<$DOKKU_ROOT/$TEST_APP/CONTAINER.web.1)
+  run /bin/bash -c "docker inspect $CID"
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
   run /bin/bash -c "docker inspect -f '{{ .HostConfig.RestartPolicy.Name }}:{{ .HostConfig.RestartPolicy.MaximumRetryCount }}' $CID"
   echo "output: $output"
   echo "status: $status"
   assert_output "$test_restart_policy"
+}
+
+procfile_line_endings_to_windows() {
+  local APP="$1"
+  local APP_REPO_DIR="$2"
+  [[ -z "$APP" ]] && local APP="$TEST_APP"
+  echo "setting line endings on Procfile to \n via unix2dos"
+  sed -i -e 's/\r*$/\r/' "$APP_REPO_DIR/Procfile"
 }

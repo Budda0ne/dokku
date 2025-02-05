@@ -5,7 +5,7 @@ source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/property-functions"
 source "$PLUGIN_AVAILABLE_PATH/checks/functions"
 
-main() {
+fn-scheduler-deploy-process() {
   declare APP="$1" IMAGE_SOURCE_TYPE="$2" IMAGE="$3" IMAGE_TAG="$4" PROC_TYPE="$5" PROC_COUNT="$6"
   local CONTAINER_INDEX=1
   local image_vendor
@@ -24,13 +24,12 @@ main() {
       # Disable the container restart policy
       "$DOCKER_BIN" container update --restart=no "$cid" &>/dev/null || true
 
-      # shellcheck disable=SC2086
       "$DOCKER_BIN" container stop $DOCKER_STOP_TIME_ARG "$cid" &>/dev/null
     done
   fi
 
   local PROCESS_TMP_FILE=$(mktemp "/tmp/dokku-${DOKKU_PID}-${FUNCNAME[0]}.XXXXXX")
-  trap "rm -rf '$PROCESS_TMP_FILE' >/dev/null" RETURN INT TERM
+  trap "rm -rf '$PROCESS_TMP_FILE' >/dev/null" RETURN INT TERM EXIT
 
   while [[ $CONTAINER_INDEX -le $PROC_COUNT ]]; do
     echo "$PLUGIN_AVAILABLE_PATH/scheduler-docker-local/bin/scheduler-deploy-process-container $APP $IMAGE_SOURCE_TYPE $IMAGE $IMAGE_TAG $PROC_TYPE $PROC_COUNT $CONTAINER_INDEX" >>"$PROCESS_TMP_FILE"
@@ -48,6 +47,33 @@ main() {
     fi
   fi
 
+  local DOCKER_ARGS
+  DOCKER_ARGS=$(: | plugn trigger docker-args-deploy "$APP" "$IMAGE_TAG" "$PROC_TYPE")
+  DOCKER_ARGS+=$(: | plugn trigger docker-args-process-deploy "$APP" "$IMAGE_SOURCE_TYPE" "$IMAGE_TAG" "$PROC_TYPE")
+  DOCKER_ARGS=" $DOCKER_ARGS "
+  declare -a ARG_ARRAY
+  eval "ARG_ARRAY=($DOCKER_ARGS)"
+
+  local port_published=false
+  for arg in "${ARG_ARRAY[@]}"; do
+    if [[ "$arg" == "-p "* ]] || [[ "$arg" =~ "--publish "* ]] || [[ "$arg" == "-P" ]] || [[ "$arg" =~ "--publish-all"* ]]; then
+      port_published=true
+      break
+    fi
+  done
+
+  if [[ "$port_published" == "true" ]]; then
+    local warned_on_publish=false
+    if [[ "$PROC_COUNT" -gt 1 ]]; then
+      warned_on_publish=true
+      dokku_log_warn "Deploys may fail when publishing ports and scaling to multiple containers. Consider scaling process type $PROC_TYPE to 1."
+    fi
+    if [[ "$DOKKU_CHECKS_DISABLED" != "true" ]] && [[ "$warned_on_publish" == "false" ]]; then
+      warned_on_publish=true
+      dokku_log_warn "Deploys may fail when publishing ports and enabling zero downtime. Consider disabling zero downtime for process type $PROC_TYPE."
+    fi
+  fi
+
   PARALLEL_DEPLOY_COUNT="$(plugn trigger "app-json-process-deploy-parallelism" "$APP" "$PROC_TYPE")"
   DOKKU_CHECKS_DISABLED="$DOKKU_CHECKS_DISABLED" INJECT_INIT_FLAG="$INJECT_INIT_FLAG" parallel --will-cite --halt soon,fail=1 --jobs "$PARALLEL_DEPLOY_COUNT" --ungroup <"$PROCESS_TMP_FILE"
 
@@ -60,10 +86,17 @@ main() {
     local CONTAINER_IDX_OFFSET=$((PROC_COUNT + 1))
   fi
   local container_state_filetype
+  pushd "$DOKKU_ROOT/$APP" >/dev/null
   for container_state_filetype in CONTAINER IP PORT; do
-    cd "$DOKKU_ROOT/$APP"
     find . -maxdepth 1 -name "$container_state_filetype.$PROC_TYPE.*" -printf "%f\n" | sort -t . -k 3 -n | tail -n +$CONTAINER_IDX_OFFSET | xargs rm -f
   done
+  popd &>/dev/null || pushd "/tmp" >/dev/null
+}
+
+main() {
+  declare desc="wrapper function to ensure tmp files are properly annotated"
+
+  fn-scheduler-deploy-process "$@"
 }
 
 main "$@"

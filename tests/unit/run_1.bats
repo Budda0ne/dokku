@@ -24,8 +24,12 @@ teardown() {
 }
 
 @test "(run) run (with --options)" {
-  deploy_app
-  run /bin/bash -c "dokku --force --quiet run $TEST_APP python -V"
+  run deploy_app
+  echo "output: $output"
+  echo "status: $status"
+  assert_success
+
+  run /bin/bash -c "dokku --force --quiet run $TEST_APP python3 -V"
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -42,7 +46,7 @@ teardown() {
   echo "status: $status"
   assert_success
 
-  run deploy_app python dokku@dokku.me:$TEST_APP add_requirements_txt
+  run deploy_app python dokku@$DOKKU_DOMAIN:$TEST_APP add_requirements_txt
   echo "output: $output"
   echo "status: $status"
   assert_success
@@ -69,7 +73,7 @@ teardown() {
   echo "status: $status"
   assert_success
 
-  run deploy_app python dokku@dokku.me:$TEST_APP add_requirements_txt
+  run deploy_app python dokku@$DOKKU_DOMAIN:$TEST_APP add_requirements_txt_cnb
   echo "output: $output"
   echo "status: $status"
   assert_success

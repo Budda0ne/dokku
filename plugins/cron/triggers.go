@@ -1,26 +1,59 @@
 package cron
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/dokku/dokku/plugins/common"
 )
 
-// TriggerInstall installs a sudoers file so we can execute crontab via sudo
+// TriggerCronGetProperty writes the cron key to stdout for a given app container
+func TriggerCronGetProperty(appName string, key string) error {
+	validProperties := map[string]bool{
+		"mailfrom": true,
+		"mailto":   true,
+	}
+	if !validProperties[key] {
+		return errors.New("Invalid cron property specified")
+	}
+
+	fmt.Println(common.PropertyGet("cron", appName, key))
+	return nil
+}
+
+// TriggerInstall runs the install step for the cron plugin
 func TriggerInstall() error {
-	lines := []string{"%dokku ALL=(ALL) NOPASSWD:/usr/bin/crontab"}
-	return common.WriteSliceToFile("/etc/sudoers.d/dokku-cron", lines)
+	if err := common.PropertySetup("cron"); err != nil {
+		return fmt.Errorf("Unable to install the cron plugin: %s", err.Error())
+	}
+
+	return nil
 }
 
-// TriggerPostDelete updates the cron entries for all apps
-func TriggerPostDelete() error {
-	return writeCronEntries()
+// TriggerPostAppCloneSetup creates new cron files
+func TriggerPostAppCloneSetup(oldAppName string, newAppName string) error {
+	err := common.PropertyClone("cron", oldAppName, newAppName)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// TriggerPostDeploy updates the cron entries for all apps
-func TriggerPostDeploy() error {
-	return writeCronEntries()
+// TriggerPostAppRenameSetup renames cron files
+func TriggerPostAppRenameSetup(oldAppName string, newAppName string) error {
+	if err := common.PropertyClone("cron", oldAppName, newAppName); err != nil {
+		return err
+	}
+
+	if err := common.PropertyDestroy("cron", oldAppName); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// TriggerCronWrite force updates the cron file for all apps
-func TriggerCronWrite() error {
-	return writeCronEntries()
+// TriggerPostDelete destroys the cron property for a given app container
+func TriggerPostDelete(appName string) error {
+	return common.PropertyDestroy("cron", appName)
 }

@@ -20,6 +20,12 @@ func main() {
 
 	var err error
 	switch cmd {
+	case "copy-from-image":
+		appName := flag.Arg(1)
+		image := flag.Arg(2)
+		source := flag.Arg(3)
+		destination := flag.Arg(4)
+		err = common.CopyFromImage(appName, image, source, destination)
 	case "docker-cleanup":
 		appName := flag.Arg(1)
 		force := common.ToBool(flag.Arg(2))
@@ -53,6 +59,13 @@ func main() {
 			appName = "--global"
 		}
 		fmt.Print(common.GetAppScheduler(appName))
+	case "plugn-trigger-exists":
+		triggerName := flag.Arg(1)
+		if common.PlugnTriggerExists(triggerName) {
+			fmt.Print("true")
+		} else {
+			fmt.Print("false")
+		}
 	case "verify-app-name":
 		appName := flag.Arg(1)
 		err = common.VerifyAppName(appName)

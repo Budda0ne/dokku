@@ -33,14 +33,21 @@ trigger-docker-options-docker-args() {
 
       [[ -z "$line" ]] && continue
 
-      # shellcheck disable=SC1001
       case "$line" in
         \#*)
           continue
           ;;
+
+        --restart*)
+          if [[ "$PHASE" == "DEPLOY" ]]; then
+            local output="$output $line"
+          fi
+          continue
+          ;;
+
         *)
           case "$IMAGE_SOURCE_TYPE" in
-            dockerfile)
+            dockerfile | nixpacks)
               case "$line" in
                 --link* | -v* | --volume*)
                   continue

@@ -54,7 +54,7 @@ sudo DOKKU_REPO=https://github.com/yourusername/dokku.git DOKKU_BRANCH=master ./
 
 ## Custom Herokuish build
 
-Dokku ships with a pre-built version of version of the [Herokuish](https://github.com/gliderlabs/herokuish) component by default. If you want to build your own version you can specify that with an environment variable.
+Dokku ships with a pre-built version of the [Herokuish](https://github.com/gliderlabs/herokuish) component by default. If you want to build your own version you can specify that with an environment variable.
 
 ```shell
 git clone https://github.com/dokku/dokku.git
@@ -78,7 +78,7 @@ Follow the [user management documentation](/docs/deployment/user-management.md) 
 
 ## VMs with less than 1 GB of memory
 
-Having less than 1 GB of system memory available for Dokku and its containers may result in unexpected errors, such as `! [remote rejected] master -> master (pre-receive hook declined)` during installation of NPM dependencies (https://github.com/npm/npm/issues/3867).
+Having less than 1 GB of system memory available for Dokku and its containers may result in unexpected errors, such as `! [remote rejected] master -> master (pre-receive hook declined)` [during installation of NPM dependencies](https://github.com/npm/npm/issues/3867).
 
 To work around this issue, it might suffice to augment the Linux swap file size to a maximum of twice the physical memory size.
 
